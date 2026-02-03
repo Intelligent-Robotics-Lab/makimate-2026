@@ -1,0 +1,22 @@
+
+services: 
+ #Base container for dev machines (x86)
+ base:
+  build: 
+   context: ..
+   dockerfile: docker/base/Dockerfile
+  volumes: 
+   - ../src:/maki_ws/src
+   - ../scripts:/maki_ws/scripts
+  tty: true
+  network_mode: host	
+ #Robot container for Raspberry Pi 5 (ARM 64)
+ robot: 
+  build:
+   context: ..
+   dockerfile: docker/robot/Dockerfile
+  volumes:
+   - ../src:/maki_ws/src
+   - ../scripts:/maki_ws/scripts
+  tty: true
+  network_mode: host
