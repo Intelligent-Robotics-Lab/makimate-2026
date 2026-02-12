@@ -6,7 +6,7 @@ def generate_launch_description():
     shell_prefix = (
         #"source ~/asr_venv/bin/activate && "
         "source /opt/ros/jazzy/setup.bash && "
-        "source ~/MakiMate2026/MakiMate/install/setup.bash && "
+        "source ~makimate-2026/install/setup.bash && "
     )
 
     # 1) ASR: ReSpeaker + Vosk
@@ -50,7 +50,7 @@ def generate_launch_description():
             "bash",
             "-lc",
             shell_prefix
-            + "cd ~/MakiMate2026/MakiMate/src/server_llm/server_llm && "
+            + "cd ~/makimate-2026/src/server_llm/server_llm && "
               "python llm_bridge_node.py "
               "--ros-args "
               "-p laptop_host:='http://35.50.73.78:8000' "
@@ -73,7 +73,7 @@ def generate_launch_description():
             + "ros2 run makimate_asr natural_tts_node "
               "--ros-args "
               "-p backend:=piper_python "
-              "-p piper_model:=/home/emanuel/MakiMate2026/MakiMate/piper_models/en_US-john-medium.onnx "
+              "-p piper_model:=/home/emanuel/makimate-2026/piper_models/en_US-john-medium.onnx "
               "-p input_topic:=/llm/stream"
         ],
         output="screen",
