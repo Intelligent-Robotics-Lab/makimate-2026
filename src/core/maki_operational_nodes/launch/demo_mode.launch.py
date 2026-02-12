@@ -6,7 +6,7 @@ def generate_launch_description():
     # Common shell prefix: ROS 2 + MakiMate workspace
     shell_prefix = (
         "source /opt/ros/jazzy/setup.bash && "
-        "source ~/MakiMate/install/setup.bash && "
+        "source ~/MakiMate2026/MakiMate/install/setup.bash && "
     )
 
     # 1) Camera: headless camera_ros node (NO image_view / Qt)
