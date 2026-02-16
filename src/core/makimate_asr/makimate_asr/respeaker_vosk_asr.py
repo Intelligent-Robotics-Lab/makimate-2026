@@ -19,7 +19,7 @@ class ReSpeakerVoskASR(Node):
         # -------------------------
         self.declare_parameter('sample_rate', 16000.0)  # float
         # device: integer index, -1 means "use default input device"
-        self.declare_parameter('device', -1)
+        self.declare_parameter('device', 0)
         self.declare_parameter(
             'model_path',
             '/home/makimate/vosk_models/vosk-model-small-en-us-0.15'
