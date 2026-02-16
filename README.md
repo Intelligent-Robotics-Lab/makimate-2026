@@ -92,4 +92,5 @@ unzip vosk-model-small-en-us-0.15.zip
 4) `pip install jinja2 setuptools typeguard`
 5) `pip install -r ~/asr_venv/clean_requirements.txt`
 6) `pip install opencv-python-headless`
+7) `pip install pyaudio --break-system-packages` then `deactivate`
 ---
