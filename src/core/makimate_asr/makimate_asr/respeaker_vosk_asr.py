@@ -22,7 +22,7 @@ class ReSpeakerVoskASR(Node):
         self.declare_parameter('device', 0)
         self.declare_parameter(
             'model_path',
-            '/home/makimate/vosk_models/vosk-model-small-en-us-0.15'
+            '/home/emanuel/vosk_models/vosk-model-small-en-us-0.15'
         )
         self.declare_parameter('publish_llm', True)
         self.declare_parameter('asr_topic', '/asr/text')
