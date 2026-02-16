@@ -118,7 +118,7 @@ def generate_launch_description():
             + "ros2 run makimate_asr natural_tts_node "
               "--ros-args "
               "-p backend:=piper_python "
-              "-p piper_model:=/home/emanuel/MakiMate2026/MakiMate/piper_models/en_US-john-medium.onnx "    
+              "-p piper_model:=/home/emanuel/makimate-2026/piper_models/en_US-john-medium.onnx "    
               "-p input_topic:=/llm/stream"
         ],
         output="screen",
