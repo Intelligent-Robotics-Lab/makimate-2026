@@ -26,6 +26,11 @@ setup(
 
             # Only the new natural TTS node is exposed as an executable
             'natural_tts_node = makimate_asr.natural_tts_node:main',
+
+            'voice_calibration = makimate_asr.voice_calibration_node:main',
+            'speaker_recognition = makimate_asr.speaker_recognition_node:main',
+            'calibration_workflow = makimate_asr.calibration_workflow_node:main',
+            'realtime_display_logger = makimate_asr.realtime_display_logger:main',
         ],
     }
 
