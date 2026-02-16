@@ -44,23 +44,23 @@ def generate_launch_description():
         output="screen",
     )
 
-    # 3) Speaker Recognition Node (continuous real-time identification)
-    speaker_recognition_node = ExecuteProcess(
-        cmd=[
-            "bash",
-            "-lc",
-            shell_prefix
-            + "~/asr_venv/bin/python -m makimate_asr.speaker_recognition_node "
-              "--ros-args "
-              "-p vosk_model_path:=/home/emanuel/vosk_models/vosk-model-small-en-us-0.15 "
-              "-p spk_model_path:=/home/emanuel/vosk_models/vosk-model-spk-0.4 "
-              "-p profile_file:=/home/emanuel/speaker_profiles.pkl "
-              "-p sample_rate:=16000 "
-              "-p threshold:=0.75 "
-              "-p device_index:=3"
-        ],
-        output="screen",
-    )
+#    # 3) Speaker Recognition Node (continuous real-time identification)
+#    speaker_recognition_node = ExecuteProcess(
+#        cmd=[
+#            "bash",
+#            "-lc",
+#            shell_prefix
+#            + "~/asr_venv/bin/python -m makimate_asr.speaker_recognition_node "
+#              "--ros-args "
+#              "-p vosk_model_path:=/home/emanuel/vosk_models/vosk-model-small-en-us-0.15 "
+#              "-p spk_model_path:=/home/emanuel/vosk_models/vosk-model-spk-0.4 "
+#              "-p profile_file:=/home/emanuel/speaker_profiles.pkl "
+#              "-p sample_rate:=16000 "
+#              "-p threshold:=0.75 "
+#              "-p device_index:=3"
+#        ],
+#        output="screen",
+#    )
 
     # 4) Calibration Workflow Node (conversational calibration)
     calibration_workflow_node = ExecuteProcess(
@@ -231,7 +231,7 @@ def generate_launch_description():
     return LaunchDescription([
         asr_node,
         voice_calibration_node,
-        speaker_recognition_node,
+        #speaker_recognition_node,
         calibration_workflow_node,
         cmd_router,
         llm_bridge,
