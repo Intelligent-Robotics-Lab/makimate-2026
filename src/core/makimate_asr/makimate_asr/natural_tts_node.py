@@ -61,7 +61,11 @@ class NaturalTTS(Node):
         self.declare_parameter("sentence_silence", 0.25)
 
         self.declare_parameter("piper_command", "")
-        self.declare_parameter("backend", "piper_python")
+        self.declare_parameter(
+            "backend",
+            "piper_python",
+            ignore_override=True
+        )
         self.declare_parameter("piper_model", "")
 
 
