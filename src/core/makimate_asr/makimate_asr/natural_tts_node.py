@@ -60,6 +60,11 @@ class NaturalTTS(Node):
         self.declare_parameter("noise_w", 0.4)
         self.declare_parameter("sentence_silence", 0.25)
 
+        self.declare_parameter("piper_command", "")
+        self.declare_parameter("backend", "piper_python")
+        self.declare_parameter("piper_model", "")
+
+
         # ---------- Read parameters ----------
         input_topic = self.get_parameter("input_topic").value
         asr_enable_topic = self.get_parameter("asr_enable_topic").value
