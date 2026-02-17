@@ -83,6 +83,7 @@ wget https://alphacephei.com/vosk/models/vosk-model-spk-0.4.zip
 unzip vosk-model-spk-0.4.zip
 unzip vosk-model-small-en-us-0.15.zip
 ```
+3) In terminal, run `/usr/bin/python3 -m pip install --break-system-packages vosk`
 
 ## Package Installation (on the Pi)
 # NOTE: This is a temporary solution. These should all be added as requirements in clean_requirements.txt st. you can install them in one command.
