@@ -41,32 +41,20 @@ class NaturalTTS(Node):
         self.declare_parameter("input_topic", "/llm/stream")
         self.declare_parameter("asr_enable_topic", "/asr/enable")
         self.declare_parameter("backend", "piper_cli")
-
+        
         # pyttsx3 params
         self.declare_parameter("rate", 170)
         self.declare_parameter("volume", 1.0)
         self.declare_parameter("voice", "")
-
+        
         # Piper params
-        self.declare_parameter(
-            "/home/emanuel/makimate-2026/piper_bin/piper/piper"
-        )
+        self.declare_parameter("piper_command", "")
         self.declare_parameter("piper_model", "")
-        self.declare_parameter(
-            "piper_audio_command", "aplay -r 22050 -f S16_LE -t raw -"
-        )
+        self.declare_parameter("piper_audio_command", "aplay -r 22050 -f S16_LE -t raw -")
         self.declare_parameter("length_scale", 0.75)
         self.declare_parameter("noise_scale", 0.6)
         self.declare_parameter("noise_w", 0.4)
         self.declare_parameter("sentence_silence", 0.25)
-
-        self.declare_parameter("piper_command", "")
-        self.declare_parameter(
-            "backend",
-            "piper_python",
-            ignore_override=True
-        )
-        self.declare_parameter("piper_model", "")
 
 
         # ---------- Read parameters ----------
