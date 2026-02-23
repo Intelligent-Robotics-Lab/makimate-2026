@@ -141,6 +141,7 @@ def generate_launch_description():
     )
 
     # 9) Maki expressions
+    """
     maki_expressions = ExecuteProcess(
         cmd=[
             "bash",
@@ -150,8 +151,10 @@ def generate_launch_description():
         ],
         output="screen",
     )
+    """
 
     # 10) Awake -> expression bridge
+    """
     maki_behavior_awake = ExecuteProcess(
         cmd=[
             "bash",
@@ -164,8 +167,10 @@ def generate_launch_description():
         ],
         output="screen",
     )
+    """
 
     # 11) DXL controller
+    """
     maki_dxl_node = ExecuteProcess(
         cmd=[
             "bash",
@@ -175,8 +180,10 @@ def generate_launch_description():
         ],
         output="screen",
     )
+    """
 
     # 12) Higher-level behavior (monologue disabled in presentation)
+    """
     maki_behavior_node = ExecuteProcess(
         cmd=[
             "bash",
@@ -188,6 +195,7 @@ def generate_launch_description():
         ],
         output="screen",
     )
+    """
 
     # 13) Camera driver
     camera_node = ExecuteProcess(
