@@ -94,4 +94,5 @@ unzip vosk-model-small-en-us-0.15.zip
 5) `pip install -r ~/asr_venv/clean_requirements.txt`
 6) `pip install opencv-python-headless`
 7) `pip install pyaudio --break-system-packages` then `deactivate`
+8) Extract piper: `cd ~/makimate-2026/piper_bin` `tar -xzf piper_linux_aarch64.tar.gz` `ls -la`
 ---
