@@ -56,11 +56,13 @@ class CalibrationWorkflowNode(Node):
         self.get_logger().info('Say "calibrate" to begin voice enrollment')
 
         # BEGIN TESTING SECTION
+        """
         timer = self.create_timer(3.0, self.test_tts_once)
     
     def test_tts_once(self):
-        """Say hi once on startup to test TTS."""
+        #Say hi once on startup to test TTS.
         self.speak("System ready")
+        """
         # END TESTING SECTION
     
     def speak(self, text):
