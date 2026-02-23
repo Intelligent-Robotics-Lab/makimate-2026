@@ -109,7 +109,7 @@ def generate_launch_description():
         output="screen",
     )
 
-    # 7) TTS
+# 7) TTS
     tts_node = ExecuteProcess(
         cmd=[
             "bash",
@@ -118,6 +118,7 @@ def generate_launch_description():
             + "ros2 run makimate_asr natural_tts_node "
               "--ros-args "
               "-p backend:=piper_python "
+              "-p piper_command:=/home/emanuel/makimate-2026/piper_bin/piper/piper "
               "-p piper_model:=/home/emanuel/makimate-2026/piper_models/en_US-john-medium.onnx "    
               "-p input_topic:=/llm/stream"
         ],
