@@ -69,6 +69,19 @@ class ReSpeakerVoskASR(Node):
         )
 
         # -------------------------
+        # Load Vosk model
+        # -------------------------
+        self.get_logger().info(f"Loading Vosk model from: {self.model_path}")
+        try:
+            self.model = Model(self.model_path)
+        except Exception as e:
+            self.get_logger().error(f"Failed to load Vosk model: {e}")
+            raise
+
+        self.recognizer = KaldiRecognizer(self.model, int(self.sample_rate))
+        self.recognizer.SetWords(True)
+
+        # -------------------------
         # Load Vosk Speaker model
         # -------------------------
         self.declare_parameter('spk_model_path', '')
@@ -83,20 +96,6 @@ class ReSpeakerVoskASR(Node):
             
             # Publisher for speaker embeddings
             self.spk_pub = self.create_publisher(String, '/voice/speaker_embedding', 10)
-
-
-        # -------------------------
-        # Load Vosk model
-        # -------------------------
-        self.get_logger().info(f"Loading Vosk model from: {self.model_path}")
-        try:
-            self.model = Model(self.model_path)
-        except Exception as e:
-            self.get_logger().error(f"Failed to load Vosk model: {e}")
-            raise
-
-        self.recognizer = KaldiRecognizer(self.model, int(self.sample_rate))
-        self.recognizer.SetWords(True)
 
         # -------------------------
         # Audio queue and stream
