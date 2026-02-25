@@ -19,6 +19,7 @@ def generate_launch_description():
               "-p sample_rate:=16000.0 "
               "-p device:=1 "
               "-p model_path:=/home/emanuel/vosk_models/vosk-model-small-en-us-0.15 "
+              "-p spk_model_path:=/home/emanuel/vosk_models/vosk-model-spk-0.4 "
               "-p publish_llm:=false "
               "-p asr_topic:=/asr/text "
               "-p llm_request_topic:=/llm/request "
