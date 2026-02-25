@@ -3,66 +3,43 @@ import os
 import json
 import pickle
 import numpy as np
-from vosk import Model, KaldiRecognizer, SpkModel
-import pyaudio
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String, Float32
-import threading
-import time
 
 
 class SpeakerRecognitionNode(Node):
-    """ROS2 node for real-time speaker recognition."""
+    """ROS2 node for real-time speaker recognition from embeddings."""
     
     def __init__(self):
         super().__init__('speaker_recognition_node')
         
         # Parameters
-        self.declare_parameter('vosk_model_path', '/home/emanuel/vosk_models/vosk-model-small-en-us-0.15')
-        self.declare_parameter('spk_model_path', '/home/emanuel/vosk_models/vosk-model-spk-0.4')
         self.declare_parameter('profile_file', os.path.expanduser('~/speaker_profiles.pkl'))
-        self.declare_parameter('sample_rate', 16000)
         self.declare_parameter('threshold', 0.75)  # Similarity threshold
-        self.declare_parameter('device_index', -1)  # -1 = default mic
         
         # Get parameters
-        vosk_model = self.get_parameter('vosk_model_path').value
-        spk_model = self.get_parameter('spk_model_path').value
         self.profile_file = self.get_parameter('profile_file').value
-        self.sample_rate = self.get_parameter('sample_rate').value
         self.threshold = self.get_parameter('threshold').value
-        self.device_index = self.get_parameter('device_index').value
-        
-        # Load models
-        self.get_logger().info(f'Loading Vosk model: {vosk_model}')
-        if not os.path.exists(vosk_model):
-            self.get_logger().error(f'Vosk model not found: {vosk_model}')
-            raise FileNotFoundError(f'Vosk model not found: {vosk_model}')
-        
-        self.model = Model(vosk_model)
-        
-        self.get_logger().info(f'Loading speaker model: {spk_model}')
-        if not os.path.exists(spk_model):
-            self.get_logger().error(f'Speaker model not found: {spk_model}')
-            raise FileNotFoundError(f'Speaker model not found: {spk_model}')
-        
-        self.spk_model = SpkModel(spk_model)
         
         # Load speaker profiles
         self.speaker_profiles = {}
         self.load_profiles()
         
         # State
-        self.is_running = False
-        self.recognition_thread = None
+        self.current_speaker = None
         
         # Publishers
         self.speaker_pub = self.create_publisher(String, '/voice/identified_speaker', 10)
         self.confidence_pub = self.create_publisher(Float32, '/voice/speaker_confidence', 10)
         
-        # Start recognition automatically
-        self.start_recognition()
+        # Subscriber to speaker embeddings from ASR
+        self.embedding_sub = self.create_subscription(
+            String,
+            '/voice/speaker_embedding',
+            self.embedding_callback,
+            10
+        )
         
         self.get_logger().info('Speaker Recognition Node ready')
         self.get_logger().info(f'Loaded {len(self.speaker_profiles)} speaker profiles')
@@ -112,117 +89,38 @@ class SpeakerRecognitionNode(Node):
         else:
             return None, best_score
     
-    def start_recognition(self):
-        """Start continuous speaker recognition."""
-        if self.is_running:
-            self.get_logger().warn('Recognition already running')
-            return
-        
-        self.is_running = True
-        self.recognition_thread = threading.Thread(
-            target=self.recognition_loop,
-            daemon=True
-        )
-        self.recognition_thread.start()
-        self.get_logger().info('Started continuous speaker recognition')
-    
-    def stop_recognition(self):
-        """Stop speaker recognition."""
-        self.is_running = False
-        if self.recognition_thread:
-            self.recognition_thread.join(timeout=2.0)
-        self.get_logger().info('Stopped speaker recognition')
-    
-    def recognition_loop(self):
-        """Main recognition loop - runs continuously."""
-        
-        rec = KaldiRecognizer(self.model, self.sample_rate)
-        rec.SetSpkModel(self.spk_model)
-        rec.SetWords(True)
-        
-        p = pyaudio.PyAudio()
-        
-        # Select microphone device
-        if self.device_index == -1:
-            device = None  # Use default
-        else:
-            device = self.device_index
-        
+    def embedding_callback(self, msg):
+        """Process incoming speaker embeddings from ASR."""
         try:
-            stream = p.open(
-                format=pyaudio.paInt16,
-                channels=1,
-                rate=self.sample_rate,
-                input=True,
-                input_device_index=device,
-                frames_per_buffer=8000
-            )
-            self.get_logger().info(f'Opened microphone (device: {device})')
-        except Exception as e:
-            self.get_logger().error(f'Failed to open microphone: {e}')
-            p.terminate()
-            self.is_running = False
-            return
-        
-        stream.start_stream()
-        
-        current_speaker = None
-        last_publish_time = 0
-        publish_interval = 0.5  # Publish at most every 0.5 seconds
-        
-        self.get_logger().info('Listening for speakers...')
-        
-        try:
-            while self.is_running and rclpy.ok():
-                try:
-                    data = stream.read(4000, exception_on_overflow=False)
-                    
-                    if rec.AcceptWaveform(data):
-                        result = json.loads(rec.Result())
-                        
-                        # Check if we have speaker data
-                        if 'spk' in result:
-                            speaker_vector = np.array(result['spk'])
-                            speaker, confidence = self.identify_speaker(speaker_vector)
-                            
-                            now = time.time()
-                            
-                            # Only publish if speaker changed or enough time passed
-                            if (speaker != current_speaker) or (now - last_publish_time > publish_interval):
-                                # Publish identified speaker
-                                speaker_msg = String()
-                                speaker_msg.data = speaker if speaker else "Unknown"
-                                self.speaker_pub.publish(speaker_msg)
-                                
-                                # Publish confidence
-                                conf_msg = Float32()
-                                conf_msg.data = confidence
-                                self.confidence_pub.publish(conf_msg)
-                                
-                                if speaker != current_speaker:
-                                    if speaker:
-                                        self.get_logger().info(f'Speaker: {speaker} (confidence: {confidence:.2f})')
-                                    else:
-                                        self.get_logger().info(f'Unknown speaker (best match: {confidence:.2f})')
-                                
-                                current_speaker = speaker
-                                last_publish_time = now
-                        
-                        # Log transcription
-                        if 'text' in result and result['text']:
-                            self.get_logger().debug(f'[{current_speaker or "Unknown"}] {result["text"]}')
+            data = json.loads(msg.data)
+            
+            if 'spk' not in data:
+                return
+            
+            speaker_vector = np.array(data['spk'])
+            speaker, confidence = self.identify_speaker(speaker_vector)
+            
+            # Only publish if speaker changed
+            if speaker != self.current_speaker:
+                # Publish identified speaker
+                speaker_msg = String()
+                speaker_msg.data = speaker if speaker else "Unknown"
+                self.speaker_pub.publish(speaker_msg)
                 
-                except Exception as e:
-                    self.get_logger().warn(f'Recognition error: {e}')
-                    continue
+                # Publish confidence
+                conf_msg = Float32()
+                conf_msg.data = confidence
+                self.confidence_pub.publish(conf_msg)
+                
+                if speaker:
+                    self.get_logger().info(f'Speaker: {speaker} (confidence: {confidence:.2f})')
+                else:
+                    self.get_logger().info(f'Unknown speaker (best match: {confidence:.2f})')
+                
+                self.current_speaker = speaker
         
-        except KeyboardInterrupt:
-            pass
-        finally:
-            stream.stop_stream()
-            stream.close()
-            p.terminate()
-            self.get_logger().info('Recognition loop ended')
+        except Exception as e:
+            self.get_logger().error(f'Error processing embedding: {e}')
 
 
 def main(args=None):
@@ -234,7 +132,6 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
-        node.stop_recognition()
         node.destroy_node()
         rclpy.shutdown()
 
