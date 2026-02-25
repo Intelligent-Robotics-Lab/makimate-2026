@@ -50,7 +50,7 @@ class NaturalTTS(Node):
         # Piper params
         self.declare_parameter("piper_command", "")
         self.declare_parameter("piper_model", "")
-        self.declare_parameter("piper_audio_command", "aplay -r 22050 -f S16_LE -t raw -")
+        self.declare_parameter("piper_audio_command", "paplay --raw --rate=22050 --format=s16le --channels=1 --latency-msec=100")
         self.declare_parameter("length_scale", 0.75)
         self.declare_parameter("noise_scale", 0.6)
         self.declare_parameter("noise_w", 0.4)
