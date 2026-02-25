@@ -67,6 +67,22 @@ class ReSpeakerVoskASR(Node):
             10,
         )
 
+        # -------------------------
+        # Load Vosk Speaker model
+        # -------------------------
+        self.declare_parameter('spk_model_path', '')
+        spk_model_path = self.get_parameter('spk_model_path').value
+        
+        self.spk_model = None
+        if spk_model_path and os.path.exists(spk_model_path):
+            from vosk import SpkModel
+            self.spk_model = SpkModel(spk_model_path)
+            self.recognizer.SetSpkModel(self.spk_model)
+            self.get_logger().info(f'Loaded speaker model: {spk_model_path}')
+            
+            # Publisher for speaker embeddings
+            self.spk_pub = self.create_publisher(String, '/voice/speaker_embedding', 10)
+
 
         # -------------------------
         # Load Vosk model
