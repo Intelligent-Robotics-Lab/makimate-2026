@@ -170,21 +170,31 @@ class ReSpeakerVoskASR(Node):
                 data = self.audio_q.get(timeout=0.5)
             except queue.Empty:
                 continue
+        
             try:
+                # Feed data to recognizer
+                self.recognizer.AcceptWaveform(data)
+        
+                # -------------------------
+                # 1️⃣ Publish embeddings for this chunk
+                # -------------------------
+                if self.spk_model:
+                    import json
+                    partial_dict = json.loads(self.recognizer.PartialResult())
+                    if 'spk' in partial_dict:
+                        spk_msg = String()
+                        spk_msg.data = json.dumps({'spk': partial_dict['spk']})
+                        self.spk_pub.publish(spk_msg)
+        
+                # -------------------------
+                # 2️⃣ Publish final ASR text if utterance complete
+                # -------------------------
                 if self.recognizer.AcceptWaveform(data):
                     result = self.recognizer.Result()
                     text = self._extract_text(result)
                     if text:
                         self._publish_text(text)
-                    
-                    # Publish speaker embedding if available
-                    if self.spk_model:
-                        import json
-                        result_dict = json.loads(result)
-                        if 'spk' in result_dict:
-                            spk_msg = String()
-                            spk_msg.data = json.dumps({'spk': result_dict['spk']})
-                            self.spk_pub.publish(spk_msg)
+                
             except Exception as e:
                 # If Vosk gets into a bad state, log and recreate recognizer
                 self.get_logger().error(f"ASR error in AcceptWaveform: {e}. Recreating recognizer.")
