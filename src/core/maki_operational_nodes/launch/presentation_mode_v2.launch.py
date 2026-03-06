@@ -232,7 +232,7 @@ def generate_launch_description():
         speaker_recognition_node,
         calibration_workflow_node,
         cmd_router,
-        llm_bridge,
+        #llm_bridge,
         tts_node,
         led_node,
         #maki_expressions,
