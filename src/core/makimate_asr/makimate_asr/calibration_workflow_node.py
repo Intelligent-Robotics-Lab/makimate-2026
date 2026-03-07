@@ -15,6 +15,9 @@ from rclpy.node import Node
 from std_msgs.msg import String, Float32
 import re
 
+# NEW
+self.current_speaker = "Unknown"  # Track who's speaking
+self.last_greeting_time = 0  # Prevent spam
 
 class CalibrationWorkflowNode(Node):
     """Manages the voice calibration conversation flow."""
@@ -64,6 +67,14 @@ class CalibrationWorkflowNode(Node):
         self.speak("System ready")
         """
         # END TESTING SECTION
+
+        # NEW: Subscribe to speaker identification
+        self.speaker_sub = self.create_subscription(
+            String,
+            '/voice/identified_speaker',
+            self.speaker_callback,
+            10
+        )
     
     def speak(self, text):
         """Send text to TTS."""
@@ -71,6 +82,10 @@ class CalibrationWorkflowNode(Node):
         msg.data = text
         self.tts_pub.publish(msg)
         self.get_logger().info(f'Maki: "{text}"')
+
+    def speaker_callback(self, msg):
+        """Track who is currently speaking."""
+        self.current_speaker = msg.data
     
     def asr_callback(self, msg):
         """Handle speech recognition results."""
@@ -80,6 +95,19 @@ class CalibrationWorkflowNode(Node):
             return
         
         self.get_logger().debug(f'ASR [{self.state}]: "{text}"')
+        
+        # NEW: Check for greetings (hi, hello, hey)
+        import time
+        if self.state == 'IDLE' and any(word in text.split() for word in ['hi', 'hello', 'hey']):
+            # Avoid spam - only respond once per 10 seconds
+            now = time.time()
+            if now - self.last_greeting_time > 10:
+                self.last_greeting_time = now
+                if self.current_speaker and self.current_speaker != "Unknown":
+                    self.speak(f"Hi {self.current_speaker}!")
+                else:
+                    self.speak("Hi there!")
+                return  # Don't process further
         
         # State machine
         if self.state == 'IDLE':
