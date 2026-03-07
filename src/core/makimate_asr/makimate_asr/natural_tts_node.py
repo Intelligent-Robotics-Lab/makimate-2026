@@ -76,6 +76,9 @@ class NaturalTTS(Node):
 
         # ---------- Backend init ----------
         self.engine: Optional["pyttsx3.Engine"] = None
+        #NEW: Piper process
+        self.piper_process = None
+        
         if self.backend == "pyttsx3":
             self._init_pyttsx3()
         else:
@@ -346,11 +349,41 @@ class NaturalTTS(Node):
                 "piper_cli backend requested but no 'piper_model' set."
             )
             return
-        self.get_logger().info(
-            f"Piper backend ready:\n"
-            f"  command={self.piper_command}\n"
-            f"  model={self.piper_model}"
-        )
+        
+        # Start persistent piper process
+        piper_cmd = [
+            self.piper_command,
+            "--model",
+            self.piper_model,
+            "--output-raw",
+            "--length_scale",
+            str(self.length_scale),
+            "--noise_scale",
+            str(self.noise_scale),
+            "--noise_w",
+            str(self.noise_w),
+            "--sentence_silence",
+            str(self.sentence_silence),
+            "--json-input",  # Accept JSON input for streaming
+        ]
+        
+        piper_cmd_str = " ".join(shlex.quote(c) for c in piper_cmd)
+        full_cmd = f"{piper_cmd_str} | {self.piper_audio_command}"
+        
+        try:
+            self.piper_process = subprocess.Popen(
+                full_cmd,
+                shell=True,
+                stdin=subprocess.PIPE,
+                bufsize=0  # Unbuffered
+            )
+            self.get_logger().info(
+                f"Piper backend ready (persistent process):\n"
+                f"  command={self.piper_command}\n"
+                f"  model={self.piper_model}"
+            )
+        except Exception as e:
+            self.get_logger().error(f"Failed to start piper process: {e}")
 
     # ======================================================================
     # ASR control
@@ -418,49 +451,26 @@ class NaturalTTS(Node):
         self._last_tts_activity_time = time.time()
 
     def _speak_piper_cli(self, text: str):
-        if not self.piper_model:
-            self.get_logger().error("No Piper model configured.")
-            return
-
-        piper_cmd = [
-            self.piper_command,
-            "--model",
-            self.piper_model,
-            "--output-raw",
-            "--length_scale",
-            str(self.length_scale),
-            "--noise_scale",
-            str(self.noise_scale),
-            "--noise_w",
-            str(self.noise_w),
-            "--sentence_silence",
-            str(self.sentence_silence),
-        ]
-
-        piper_cmd_str = " ".join(shlex.quote(c) for c in piper_cmd)
-        full_cmd = f"{piper_cmd_str} | {self.piper_audio_command}"
-
+        if not self.piper_process or self.piper_process.poll() is not None:
+            self.get_logger().error("Piper process not running, restarting...")
+            self._init_piper()
+            if not self.piper_process:
+                return
+        
         self.get_logger().info(f"[piper_cli] Speaking: {text!r}")
-        self.get_logger().debug(f"[piper_cli] Pipeline: {full_cmd}")
-
-        proc = subprocess.Popen(
-            full_cmd, shell=True, stdin=subprocess.PIPE
-        )
-
+        
         try:
-            if proc.stdin:
-                proc.stdin.write((text.strip() + "\n").encode("utf-8"))
-                proc.stdin.close()
-            proc.wait()
-        except Exception as e:
-            self.get_logger().error(
-                f"[piper_cli] Error while running Piper: {e}"
-            )
-        finally:
-            if proc.poll() is None:
-                proc.kill()
-            # Mark TTS activity finishing after the audio completes
+            if self.piper_process.stdin:
+                # Send text as JSON
+                import json
+                json_input = json.dumps({"text": text.strip()}) + "\n"
+                self.piper_process.stdin.write(json_input.encode("utf-8"))
+                self.piper_process.stdin.flush()
             self._last_tts_activity_time = time.time()
+        except Exception as e:
+            self.get_logger().error(f"[piper_cli] Error writing to Piper: {e}")
+            # Process died, will restart on next call
+            self.piper_process = None
 
     # ======================================================================
     # Cleanup
@@ -472,6 +482,14 @@ class NaturalTTS(Node):
                 self.engine.stop()
             except Exception:
                 pass
+        # ADD THIS:
+        if self.piper_process:
+            try:
+                self.piper_process.stdin.close()
+                self.piper_process.terminate()
+                self.piper_process.wait(timeout=2)
+            except Exception:
+                self.piper_process.kill()
         super().destroy_node()
 
 
