@@ -68,10 +68,21 @@ class ASRCommandRouter(Node):
         self._awake_pub = self.create_publisher(Bool, awake_topic, 10)
         self._tts_pub = self.create_publisher(String, tts_topic, 10)
 
+        # NEW: Track current speaker
+        self.current_speaker = "Unknown"
+
         # ---- Subscribers ----
         self._asr_sub = self.create_subscription(String, asr_topic, self._on_asr, 10)
         self._asr_enable_sub = self.create_subscription(
             Bool, asr_enable_topic, self._on_asr_enable, 10
+        )
+
+        # NEW: Subscribe to speaker identification
+        self.create_subscription(
+            String,
+            '/voice/identified_speaker',
+            self._on_speaker_identified,
+            10
         )
 
         # ---- State ----
@@ -112,6 +123,12 @@ class ASRCommandRouter(Node):
     # ------------------------------------------------------------------ #
     # Callbacks
     # ------------------------------------------------------------------ #
+    # NEW: Speaker ID
+    def _on_speaker_identified(self, msg):
+        """Track who is currently speaking."""
+        self.current_speaker = msg.data
+        self.get_logger().debug(f'Current speaker: {self.current_speaker}')
+    
     def _on_asr(self, msg: String):
         text = msg.data.strip()
         low = text.lower()
@@ -131,7 +148,16 @@ class ASRCommandRouter(Node):
                 self._publish_awake(True)
                 self._speak_immediate(self._wake_greeting)
             return
-
+            
+        # NEW: Handle "hi" greetings
+        if self.awake and any(word in text.split() for word in ['hi', 'hello', 'hey']):
+            if self.current_speaker and self.current_speaker != "Unknown":
+                response = f"Hi {self.current_speaker}!"
+            else:
+                response = f"Hi there!"
+            self.get_logger().info(f"[Router->TTS] {response!r}")
+            self._publish_to_tts(response)
+            return
         # --------------------------------------------------
         # Check any sleep phrase in list
         # --------------------------------------------------
