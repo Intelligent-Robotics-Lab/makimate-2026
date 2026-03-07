@@ -176,24 +176,23 @@ class ReSpeakerVoskASR(Node):
                     text = self._extract_text(result)
                     if text:
                         self._publish_text(text)
-                    
-                # Publish speaker embedding if available
-                if self.spk_model:
-                    import json
-                    result_dict = json.loads(result)
-                    if 'spk' in result_dict:
-                        spk_msg = String()
-                        spk_msg.data = json.dumps({'spk': result_dict['spk']})
-                        self.spk_pub.publish(spk_msg)
-                else:
-                    # NEW: Also publish embeddings on partial results
-                    partial = self.recognizer.PartialResult()
+                    # Publish speaker embedding if available
                     if self.spk_model:
                         import json
-                        result_dict = json.loads(partial)
+                        result_dict = json.loads(result)
                         if 'spk' in result_dict:
                             spk_msg = String()
                             spk_msg.data = json.dumps({'spk': result_dict['spk']})
+                            self.spk_pub.publish(spk_msg)
+                else:
+                    # Partial result - also check for speaker embedding
+                    partial = self.recognizer.PartialResult()  # NEW: Get partial result
+                    if self.spk_model:
+                        import json
+                        partial_dict = json.loads(partial)  # FIXED: Use partial, not result
+                        if 'spk' in partial_dict:
+                            spk_msg = String()
+                            spk_msg.data = json.dumps({'spk': partial_dict['spk']})
                             self.spk_pub.publish(spk_msg)
             except Exception as e:
                 # If Vosk gets into a bad state, log and recreate recognizer
@@ -201,7 +200,6 @@ class ReSpeakerVoskASR(Node):
                 try:
                     self.recognizer = KaldiRecognizer(self.model, int(self.sample_rate))
                     self.recognizer.SetWords(True)
-                    # Re-set speaker model if it exists
                     if self.spk_model:
                         self.recognizer.SetSpkModel(self.spk_model)
                 except Exception as e2:
