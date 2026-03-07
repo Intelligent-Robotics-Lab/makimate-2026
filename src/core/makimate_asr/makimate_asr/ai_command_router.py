@@ -149,15 +149,15 @@ class ASRCommandRouter(Node):
                 self._speak_immediate(self._wake_greeting)
             return
             
-        # NEW: Handle "hi" greetings
-        if self.awake and any(word in text.split() for word in ['hi', 'hello', 'hey']):
+        # NEW: Handle "hi" greetings when awake
+        if any(word in low.split() for word in ['hi', 'hello', 'hey']):
             if self.current_speaker and self.current_speaker != "Unknown":
                 response = f"Hi {self.current_speaker}!"
             else:
                 response = f"Hi there!"
-            self.get_logger().info(f"[Router->TTS] {response!r}")
-            self._publish_to_tts(response)
+            self._speak_immediate(response)
             return
+            
         # --------------------------------------------------
         # Check any sleep phrase in list
         # --------------------------------------------------
