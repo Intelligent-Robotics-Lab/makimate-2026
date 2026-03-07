@@ -91,14 +91,23 @@ class SpeakerRecognitionNode(Node):
     
     def embedding_callback(self, msg):
         """Process incoming speaker embeddings from ASR."""
+        self.get_logger().info(f'Received embedding message (length: {len(msg.data)})')
+        
         try:
             data = json.loads(msg.data)
+            self.get_logger().info(f'Parsed JSON successfully, keys: {data.keys()}')
             
             if 'spk' not in data:
+                self.get_logger().warn('No "spk" key in embedding data')
                 return
             
             speaker_vector = np.array(data['spk'])
+            self.get_logger().info(f'Speaker vector length: {len(speaker_vector)}')
+            
             speaker, confidence = self.identify_speaker(speaker_vector)
+            
+            # Always log for debugging
+            self.get_logger().info(f'Recognition: speaker={speaker}, confidence={confidence:.3f}, threshold={self.threshold}')
             
             # Only publish if speaker changed
             if speaker != self.current_speaker:
@@ -121,6 +130,8 @@ class SpeakerRecognitionNode(Node):
         
         except Exception as e:
             self.get_logger().error(f'Error processing embedding: {e}')
+            import traceback
+            self.get_logger().error(traceback.format_exc())
 
 
 def main(args=None):
