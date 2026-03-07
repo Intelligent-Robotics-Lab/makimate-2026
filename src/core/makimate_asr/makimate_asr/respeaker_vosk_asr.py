@@ -177,10 +177,20 @@ class ReSpeakerVoskASR(Node):
                     if text:
                         self._publish_text(text)
                     
-                    # Publish speaker embedding if available
+                # Publish speaker embedding if available
+                if self.spk_model:
+                    import json
+                    result_dict = json.loads(result)
+                    if 'spk' in result_dict:
+                        spk_msg = String()
+                        spk_msg.data = json.dumps({'spk': result_dict['spk']})
+                        self.spk_pub.publish(spk_msg)
+                else:
+                    # NEW: Also publish embeddings on partial results
+                    partial = self.recognizer.PartialResult()
                     if self.spk_model:
                         import json
-                        result_dict = json.loads(result)
+                        result_dict = json.loads(partial)
                         if 'spk' in result_dict:
                             spk_msg = String()
                             spk_msg.data = json.dumps({'spk': result_dict['spk']})
