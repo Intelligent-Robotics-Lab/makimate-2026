@@ -23,6 +23,7 @@ class VoiceCalibrationNode(Node):
         self.declare_parameter('profile_file', os.path.expanduser('~/speaker_profiles.pkl'))
         self.declare_parameter('calibration_duration', 10)  # seconds
         self.declare_parameter('sample_rate', 16000)
+        self.declare_parameter('recording_delay', 1.5)
         
         # Get parameters
         vosk_model = self.get_parameter('vosk_model_path').value
@@ -113,6 +114,11 @@ class VoiceCalibrationNode(Node):
             return
         
         self.get_logger().info(f'Starting calibration for: {speaker_name}')
+
+        # Wait for TTS to finish speaking
+        recording_delay = self.get_parameter('recording_delay').value
+        import time
+        time.sleep(recording_delay)
         
         # Publish status
         status_msg = String()
