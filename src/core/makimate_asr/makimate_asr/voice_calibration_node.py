@@ -114,16 +114,16 @@ class VoiceCalibrationNode(Node):
             return
         
         self.get_logger().info(f'Starting calibration for: {speaker_name}')
-
-        # Wait for TTS to finish speaking
-        recording_delay = self.get_parameter('recording_delay').value
-        import time
-        time.sleep(recording_delay)
         
-        # Publish status
+        # Publish status FIRST
         status_msg = String()
         status_msg.data = f'started:{speaker_name}'
         self.status_pub.publish(status_msg)
+        
+        # THEN wait for TTS to finish speaking
+        recording_delay = self.get_parameter('recording_delay').value
+        import time
+        time.sleep(recording_delay)
         
         # Start calibration in thread
         self.calibration_thread = threading.Thread(
