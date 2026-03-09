@@ -163,7 +163,7 @@ class MakiBehavior(Node):
         # Clamp each value
         arr_clamped = [
             max(lim[0], min(lim[1], val))
-            for val, lim in zip(arr_deg, limits_deg)
+            for val, lim in zip(arr, limits_deg)
         ]
     
         # Optional: convert to servo pulses if your driver expects integer units
