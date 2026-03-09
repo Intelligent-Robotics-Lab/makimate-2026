@@ -180,9 +180,11 @@ class MakiDxl6(Node):
             clamped = max(min_d, min(max_d, angle_rel))
 
             ticks = self._deg_to_ticks_for_id(dxl_id, clamped)
-
-            # Clamp to actual hardware tick limits
-            ticks = max(self.min_ticks[dxl_id], min(self.max_ticks[dxl_id], ticks))
+            
+            # Clamp to hardware limits (avoid boundary values)
+            ticks = max(
+                self.min_ticks[dxl_id] + 1,
+                min(self.max_ticks[dxl_id] - 1, ticks)
 
             result, error = self.packet_handler.write4ByteTxRx(
                 self.port_handler, dxl_id,
