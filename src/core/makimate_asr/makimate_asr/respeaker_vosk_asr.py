@@ -145,11 +145,11 @@ class ReSpeakerVoskASR(Node):
                 # RESTART the audio stream
                 if self.stream and self.stream.stopped:
                     self.stream.start()
-                # Reset recognizer to clear any partial state
-                self.recognizer = KaldiRecognizer(self.model, int(self.sample_rate))
-                self.recognizer.SetWords(True)
-                if self.spk_model:
-                    self.recognizer.SetSpkModel(self.spk_model)
+                # Reset recognizer state safely
+                try:
+                    self.recognizer.Reset()
+                except Exception as e:
+                    self.get_logger().warn(f"Recognizer reset failed: {e}")
 
 
 
