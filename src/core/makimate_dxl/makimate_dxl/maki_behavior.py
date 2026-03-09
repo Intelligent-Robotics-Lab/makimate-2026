@@ -146,41 +146,17 @@ class MakiBehavior(Node):
     # ------------------------------------------
     def send(self, arr):
         """
-        Sends joint goals safely, clamping each joint to its allowed range.
-        arr_deg: [yaw, pitch, eye_pitch, eye_yaw, lid_left, lid_right] in degrees
+        Sends joint goals safely, mapping degrees [-180,180] to full Dynamixel pulses [0,4095].
+        arr: [yaw, pitch, eye_pitch, eye_yaw, lid_left, lid_right] in degrees
         """
     
-        # Joint limits (example safe ranges, adjust if needed)
-        limits_deg = [
-            (-9.0, 9.0),   # yaw (ID 1)        # troublemaker ID 1     (-90.0, 90.0)
-            (-45.0, 45.0),   # pitch (ID 2)
-            (-3.0, 3.0),   # eye_pitch (ID 3)        # troublemaker ID 3     (-30.0, 30.0)
-            (-30.0, 30.0),   # eye_yaw (ID 4)
-            (-20.0, 26.0),   # lid_left (ID 5)
-            (-26.0, 20.0),   # lid_right (ID 6)
-        ]
+        # Convert degrees to 12-bit pulse (0-4095)
+        arr_pulse = [int(2048 + val_deg * 4096/360.0) for val_deg in arr]
     
-        # Clamp each value
-        arr_clamped = [
-            max(lim[0], min(lim[1], val))
-            for val, lim in zip(arr, limits_deg)
-        ]
+        # Clamp to valid range just in case
+        arr_pulse = [max(0, min(4095, pulse)) for pulse in arr_pulse]
     
-        # Optional: convert to servo pulses if your driver expects integer units
-        # (Assuming 12-bit encoder, 0–360° → 0–4095)
-        # arr_pulse = [int((val + 180.0) * (4095.0 / 360.0)) for val in arr_clamped]
-        arr_pulse = [
-            int(max(p_min, min(p_max, 2048 + val_deg * 4096/360.0)))
-            for val_deg, (p_min, p_max) in zip(arr_clamped, [
-                (1946, 2150),  # ID1
-                (1642, 2454),  # ID2
-                (2014, 2082),  # ID3
-                (1642, 2454),  # ID4
-                (2030, 2066),  # ID5
-                (2030, 2066),  # ID6
-            ])
-        ]
-    
+        # Publish
         msg = Float64MultiArray()
         msg.data = arr_pulse
         self.pub.publish(msg)
