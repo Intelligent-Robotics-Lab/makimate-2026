@@ -22,7 +22,7 @@ class VoiceCalibrationNode(Node):
         self.declare_parameter('spk_model_path', '/home/emanuel/vosk_models/vosk-model-spk-0.4')
         self.declare_parameter('profile_file', os.path.expanduser('~/speaker_profiles.pkl'))
         self.declare_parameter('sample_rate', 16000)
-        self.declare_parameter('target_samples', 10)  # Number of voice samples to collect
+        self.declare_parameter('target_samples', 1)  # Number of voice samples to collect
         
         # Get parameters
         vosk_model = self.get_parameter('vosk_model_path').value
