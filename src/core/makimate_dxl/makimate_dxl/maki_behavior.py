@@ -210,7 +210,7 @@ class MakiBehavior(Node):
                 self.blink_interval = random.randint(120, 240)
     
         arr_deg = [yaw, pitch, eye_pitch, eye_yaw, lid_left, lid_right]
-        self.send_safe(arr_deg)
+        self.send(arr_deg)
 
     # ------------------------------------------
     # Stop all active behaviors and reset flags
