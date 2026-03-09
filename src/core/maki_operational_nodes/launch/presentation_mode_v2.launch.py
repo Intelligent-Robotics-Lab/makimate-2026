@@ -8,7 +8,7 @@ def generate_launch_description():
         "source ~/makimate-2026/install/setup.bash && "
     )
 
-    """
+    
     # 1) ASR: ReSpeaker + Vosk
     asr_node = ExecuteProcess(
         cmd=[
@@ -28,8 +28,8 @@ def generate_launch_description():
         ],
         output="screen",
     )
-    """
-
+    
+"""
     # 1a) Whisper ASR (for text transcription)
     whisper_asr_node = ExecuteProcess(
         cmd=[
@@ -64,7 +64,7 @@ def generate_launch_description():
         ],
         output="screen",
     )
-
+"""
 
     # 2) Voice Calibration Node (handles recording and saving voice profiles)
     voice_calibration_node = ExecuteProcess(
@@ -266,9 +266,9 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        #asr_node,    # commented out for below new
-        whisper_asr_node, #new
-        vosk_embeddings_node, #new
+        asr_node,    # comment this out if using whisper asr
+        #whisper_asr_node, #new
+        #vosk_embeddings_node, #new
         voice_calibration_node,
         speaker_recognition_node,
         calibration_workflow_node,
