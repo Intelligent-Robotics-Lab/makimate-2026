@@ -30,6 +30,10 @@ class ReSpeakerVoskASR(Node):
         self.declare_parameter('llm_request_topic', '/llm/request')
         self.declare_parameter('enable_topic', '/asr/enable')  # NEW: mute/unmute channel
 
+        #NEW
+        self.declare_parameter('publish_text', True)  # NEW: Allow disabling text output
+        self.publish_text = self.get_parameter('publish_text').value
+
 
         # -------------------------
         # Read parameters
