@@ -8,6 +8,7 @@ def generate_launch_description():
         "source ~/makimate-2026/install/setup.bash && "
     )
 
+    """
     # 1) ASR: ReSpeaker + Vosk
     asr_node = ExecuteProcess(
         cmd=[
@@ -27,6 +28,43 @@ def generate_launch_description():
         ],
         output="screen",
     )
+    """
+
+    # 1a) Whisper ASR (for text transcription)
+    whisper_asr_node = ExecuteProcess(
+        cmd=[
+            "bash",
+            "-lc",
+            shell_prefix
+            + "~/asr_venv/bin/python -m makimate_asr.respeaker_whisper_asr "
+              "--ros-args "
+              "-p sample_rate:=16000 "
+              "-p device:=1 "
+              "-p model_size:=base "
+              "-p asr_topic:=/asr/text "
+              "-p enable_topic:=/asr/enable"
+        ],
+        output="screen",
+    )
+
+    # 1b) Vosk ASR (for speaker embeddings only)
+    vosk_embeddings_node = ExecuteProcess(
+        cmd=[
+            "bash",
+            "-lc",
+            shell_prefix
+            + "~/asr_venv/bin/python -m makimate_asr.respeaker_vosk_asr "
+              "--ros-args "
+              "-p sample_rate:=16000.0 "
+              "-p device:=1 "
+              "-p model_path:=/home/emanuel/vosk_models/vosk-model-small-en-us-0.15 "
+              "-p spk_model_path:=/home/emanuel/vosk_models/vosk-model-spk-0.4 "
+              "-p publish_text:=false "
+              "-p enable_topic:=/asr/enable"
+        ],
+        output="screen",
+    )
+
 
     # 2) Voice Calibration Node (handles recording and saving voice profiles)
     voice_calibration_node = ExecuteProcess(
