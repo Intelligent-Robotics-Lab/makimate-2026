@@ -244,6 +244,6 @@ def generate_launch_description():
         maki_dxl_node, #
         maki_behavior_node, # 
         camera_node,
-        #face_tracker_node,
-        #face_to_maki_node,
+        face_tracker_node,
+        face_to_maki_node,
     ])
