@@ -152,9 +152,9 @@ class MakiBehavior(Node):
     
         # Joint limits (example safe ranges, adjust if needed)
         limits_deg = [
-            (-90.0, 90.0),   # yaw (ID 1)
+            (-9.0, 9.0),   # yaw (ID 1)        # troublemaker ID 1     (-90.0, 90.0)
             (-45.0, 45.0),   # pitch (ID 2)
-            (-30.0, 30.0),   # eye_pitch (ID 3)
+            (-3.0, 3.0),   # eye_pitch (ID 3)        # troublemaker ID 3     (-30.0, 30.0)
             (-30.0, 30.0),   # eye_yaw (ID 4)
             (-20.0, 26.0),   # lid_left (ID 5)
             (-26.0, 20.0),   # lid_right (ID 6)
