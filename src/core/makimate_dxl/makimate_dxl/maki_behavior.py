@@ -145,8 +145,33 @@ class MakiBehavior(Node):
     # Helper to publish joint goals (raw)
     # ------------------------------------------
     def send(self, arr):
+        """
+        Sends joint goals safely, clamping each joint to its allowed range.
+        arr_deg: [yaw, pitch, eye_pitch, eye_yaw, lid_left, lid_right] in degrees
+        """
+    
+        # Joint limits (example safe ranges, adjust if needed)
+        limits_deg = [
+            (-90.0, 90.0),   # yaw (ID 1)
+            (-45.0, 45.0),   # pitch (ID 2)
+            (-30.0, 30.0),   # eye_pitch (ID 3)
+            (-30.0, 30.0),   # eye_yaw (ID 4)
+            (-20.0, 26.0),   # lid_left (ID 5)
+            (-26.0, 20.0),   # lid_right (ID 6)
+        ]
+    
+        # Clamp each value
+        arr_clamped = [
+            max(lim[0], min(lim[1], val))
+            for val, lim in zip(arr_deg, limits_deg)
+        ]
+    
+        # Optional: convert to servo pulses if your driver expects integer units
+        # (Assuming 12-bit encoder, 0–360° → 0–4095)
+        arr_pulse = [int((val + 180.0) * (4095.0 / 360.0)) for val in arr_clamped]
+    
         msg = Float64MultiArray()
-        msg.data = arr
+        msg.data = arr_pulse
         self.pub.publish(msg)
 
     # ------------------------------------------
@@ -154,44 +179,38 @@ class MakiBehavior(Node):
     # ------------------------------------------
     def send_with_blink(self, yaw, pitch, eye_pitch, eye_yaw, base_lid_left, base_lid_right):
         """
-        Wraps send() and injects a short blink (close+open) every 6–12 seconds.
+        Wraps send_safe() and injects a short blink (close+open) every 6–12 seconds.
         """
         lid_left = base_lid_left
         lid_right = base_lid_right
-
+    
         # Advance blink timer
         self.blink_counter += 1
-
-        # If idle, maybe start a blink
-        if self.blink_phase == 0:
-            if self.blink_counter >= self.blink_interval:
-                self.blink_phase = 1
-                self.blink_step = 0
-
-        # Closing phase: override lids to closed
-        if self.blink_phase == 1:
-            # CLOSED LIDS: left=-19.0, right=26.0
+    
+        if self.blink_phase == 0 and self.blink_counter >= self.blink_interval:
+            self.blink_phase = 1
+            self.blink_step = 0
+    
+        if self.blink_phase == 1:  # closing
             lid_left = -19.0
             lid_right = 26.0
             self.blink_step += 1
-            if self.blink_step >= 4:  # ~4 frames closed
+            if self.blink_step >= 4:
                 self.blink_phase = 2
                 self.blink_step = 0
-
-        # Opening phase: back to base lids
-        elif self.blink_phase == 2:
+    
+        elif self.blink_phase == 2:  # opening
             lid_left = base_lid_left
             lid_right = base_lid_right
             self.blink_step += 1
             if self.blink_step >= 4:
-                # Done blinking, reset timer + interval
                 self.blink_phase = 0
                 self.blink_step = 0
                 self.blink_counter = 0
                 self.blink_interval = random.randint(120, 240)
-
-        arr = [yaw, pitch, eye_pitch, eye_yaw, lid_left, lid_right]
-        self.send(arr)
+    
+        arr_deg = [yaw, pitch, eye_pitch, eye_yaw, lid_left, lid_right]
+        self.send_safe(arr_deg)
 
     # ------------------------------------------
     # Stop all active behaviors and reset flags
