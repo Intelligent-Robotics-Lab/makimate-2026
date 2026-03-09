@@ -38,7 +38,7 @@ def generate_launch_description():
             shell_prefix
             + "~/asr_venv/bin/python -m makimate_asr.respeaker_whisper_asr "
               "--ros-args "
-              "-p sample_rate:=16000 "
+              "-p sample_rate:=16000.0 "
               "-p device:=1 "
               "-p model_size:=base "
               "-p asr_topic:=/asr/text "
