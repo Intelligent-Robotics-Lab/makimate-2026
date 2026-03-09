@@ -21,16 +21,15 @@ class VoiceCalibrationNode(Node):
         self.declare_parameter('vosk_model_path', '/home/emanuel/vosk_models/vosk-model-small-en-us-0.15')
         self.declare_parameter('spk_model_path', '/home/emanuel/vosk_models/vosk-model-spk-0.4')
         self.declare_parameter('profile_file', os.path.expanduser('~/speaker_profiles.pkl'))
-        self.declare_parameter('calibration_duration', 10)  # seconds
         self.declare_parameter('sample_rate', 16000)
-        self.declare_parameter('recording_delay', 1.5)
+        self.declare_parameter('target_samples', 10)  # Number of voice samples to collect
         
         # Get parameters
         vosk_model = self.get_parameter('vosk_model_path').value
         spk_model = self.get_parameter('spk_model_path').value
         self.profile_file = self.get_parameter('profile_file').value
-        self.calibration_duration = self.get_parameter('calibration_duration').value
         self.sample_rate = self.get_parameter('sample_rate').value
+        self.target_samples = self.get_parameter('target_samples').value
         
         # Load models
         self.get_logger().info(f'Loading Vosk model: {vosk_model}')
@@ -51,19 +50,49 @@ class VoiceCalibrationNode(Node):
         self.speaker_profiles = {}
         self.load_profiles()
         
-        # State
+        # Calibration state
         self.is_calibrating = False
-        self.calibration_thread = None
+        self.current_speaker_name = None
+        self.speaker_vectors = []
+        self.asr_enabled = False
+        self.recording_active = False
+        
+        # Audio setup
+        self.p = None
+        self.stream = None
+        self.rec = None
         
         # Publishers
         self.status_pub = self.create_publisher(String, '/voice/calibration_status', 10)
         self.progress_pub = self.create_publisher(Float32, '/voice/calibration_progress', 10)
+        self.ready_pub = self.create_publisher(Bool, '/voice/calibration_ready', 10)
         
         # Subscribers
         self.start_sub = self.create_subscription(
             String,
             '/voice/start_calibration',
             self.start_calibration_callback,
+            10
+        )
+        
+        self.asr_enable_sub = self.create_subscription(
+            Bool,
+            '/asr/enable',
+            self.asr_enable_callback,
+            10
+        )
+        
+        self.record_segment_sub = self.create_subscription(
+            Bool,
+            '/voice/record_segment',
+            self.record_segment_callback,
+            10
+        )
+        
+        self.finish_calibration_sub = self.create_subscription(
+            Bool,
+            '/voice/finish_calibration',
+            self.finish_calibration_callback,
             10
         )
         
@@ -86,7 +115,6 @@ class VoiceCalibrationNode(Node):
     def save_profiles(self):
         """Save speaker profiles to disk."""
         try:
-            # Create directory if it doesn't exist
             os.makedirs(os.path.dirname(self.profile_file), exist_ok=True)
             
             with open(self.profile_file, 'wb') as f:
@@ -96,7 +124,7 @@ class VoiceCalibrationNode(Node):
             self.get_logger().error(f'Failed to save profiles: {e}')
     
     def start_calibration_callback(self, msg):
-        """Start calibration for a speaker."""
+        """Start calibration session for a speaker."""
         speaker_name = msg.data.strip()
         
         if not speaker_name:
@@ -109,158 +137,157 @@ class VoiceCalibrationNode(Node):
         if self.is_calibrating:
             self.get_logger().warn('Calibration already in progress')
             status_msg = String()
-            status_msg.data = f'error:busy'
+            status_msg.data = 'error:busy'
             self.status_pub.publish(status_msg)
             return
         
-        self.get_logger().info(f'Starting calibration for: {speaker_name}')
+        self.get_logger().info(f'Starting calibration session for: {speaker_name}')
         
-        # Publish status
-        status_msg = String()
-        status_msg.data = f'started:{speaker_name}'
-        self.status_pub.publish(status_msg)
-        
-        # Start calibration in thread (sleep will happen there)
-        self.calibration_thread = threading.Thread(
-            target=self.calibrate_speaker,
-            args=(speaker_name,),
-            daemon=True
-        )
-        self.calibration_thread.start()
-    
-    def calibrate_speaker(self, speaker_name):
-        """Calibrate a speaker's voice (runs in thread)."""
-        # MOVE THE SLEEP HERE - at the start of the thread
-        recording_delay = self.get_parameter('recording_delay').value
-        import time
-        time.sleep(recording_delay)
-        """Perform speaker calibration from microphone."""
         self.is_calibrating = True
+        self.current_speaker_name = speaker_name
+        self.speaker_vectors = []
         
+        # Initialize audio stream and recognizer
         try:
-            rec = KaldiRecognizer(self.model, self.sample_rate)
-            rec.SetSpkModel(self.spk_model)
+            self.rec = KaldiRecognizer(self.model, self.sample_rate)
+            self.rec.SetSpkModel(self.spk_model)
             
-            p = pyaudio.PyAudio()
+            self.p = pyaudio.PyAudio()
+            self.stream = self.p.open(
+                format=pyaudio.paInt16,
+                channels=1,
+                rate=self.sample_rate,
+                input=True,
+                input_device_index=1,  # ReSpeaker
+                frames_per_buffer=4000
+            )
             
-            # Open microphone
-            try:
-                stream = p.open(
-                    format=pyaudio.paInt16,
-                    channels=1,
-                    rate=self.sample_rate,
-                    input=True,
-                    frames_per_buffer=8000
-                )
-                self.get_logger().info('Microphone opened')
-            except Exception as e:
-                self.get_logger().error(f'Failed to open microphone: {e}')
-                status_msg = String()
-                status_msg.data = f'error:microphone:{e}'
-                self.status_pub.publish(status_msg)
-                p.terminate()
-                self.is_calibrating = False
-                return
+            self.get_logger().info('Audio stream initialized')
             
-            stream.start_stream()
-            
-            speaker_vectors = []
-            transcriptions = []
-            frames = 0
-            max_frames = self.calibration_duration * self.sample_rate // 4000
-            audio_detected = False
-            
-            self.get_logger().info(f'Recording for {self.calibration_duration} seconds...')
-            
-            try:
-                while frames < max_frames and self.is_calibrating:
-                    try:
-                        data = stream.read(4000, exception_on_overflow=False)
-                        
-                        # Check audio level
-                        audio_data = np.frombuffer(data, dtype=np.int16)
-                        volume = np.abs(audio_data).mean()
-                        
-                        if volume > 100:
-                            audio_detected = True
-                        
-                        # Publish progress
-                        progress = (frames / max_frames) * 100.0
-                        progress_msg = Float32()
-                        progress_msg.data = progress
-                        self.progress_pub.publish(progress_msg)
-                        
-                        if rec.AcceptWaveform(data):
-                            result = json.loads(rec.Result())
-                            
-                            if 'text' in result and result['text']:
-                                transcriptions.append(result['text'])
-                                self.get_logger().info(f'Heard: "{result["text"]}"')
-                            
-                            if 'spk' in result:
-                                speaker_vectors.append(result['spk'])
-                                self.get_logger().info(f'Captured sample {len(speaker_vectors)}')
-                        
-                        frames += 1
-                        
-                    except Exception as e:
-                        self.get_logger().warn(f'Read error: {e}')
-                        continue
-                
-                # Process final audio
-                final_result = json.loads(rec.FinalResult())
-                if 'text' in final_result and final_result['text']:
-                    transcriptions.append(final_result['text'])
-                if 'spk' in final_result:
-                    speaker_vectors.append(final_result['spk'])
-                
-            finally:
-                stream.stop_stream()
-                stream.close()
-                p.terminate()
-            
-            # Validate results
-            if not audio_detected:
-                self.get_logger().error('No audio detected!')
-                status_msg = String()
-                status_msg.data = 'error:no_audio'
-                self.status_pub.publish(status_msg)
-                self.is_calibrating = False
-                return
-            
-            if not speaker_vectors:
-                self.get_logger().error('No speaker data captured!')
-                status_msg = String()
-                status_msg.data = 'error:no_speaker_data'
-                self.status_pub.publish(status_msg)
-                self.is_calibrating = False
-                return
-            
-            # Average the vectors
-            avg_vector = np.mean(speaker_vectors, axis=0)
-            self.speaker_profiles[speaker_name] = avg_vector.tolist()  # Convert to list for JSON serialization
-            self.save_profiles()
-            
-            self.get_logger().info(f'✅ Calibrated "{speaker_name}" with {len(speaker_vectors)} samples')
-            
-            # Publish success
+            # Publish status
             status_msg = String()
-            status_msg.data = f'success:{speaker_name}:{len(speaker_vectors)}'
+            status_msg.data = f'started:{speaker_name}'
             self.status_pub.publish(status_msg)
             
         except Exception as e:
-            self.get_logger().error(f'Calibration failed: {e}')
+            self.get_logger().error(f'Failed to initialize audio: {e}')
             status_msg = String()
-            status_msg.data = f'error:exception:{e}'
+            status_msg.data = f'error:audio_init:{e}'
+            self.status_pub.publish(status_msg)
+            self.cleanup_calibration()
+    
+    def asr_enable_callback(self, msg):
+        """Track when ASR is enabled/disabled (TTS finished/started)."""
+        self.asr_enabled = msg.data
+        
+        if self.is_calibrating:
+            if self.asr_enabled and not self.recording_active:
+                # ASR just re-enabled (TTS finished) - signal ready to record
+                ready_msg = Bool()
+                ready_msg.data = True
+                self.ready_pub.publish(ready_msg)
+                self.get_logger().debug('Ready to record next segment')
+    
+    def record_segment_callback(self, msg):
+        """Start/stop recording a segment."""
+        if not self.is_calibrating:
+            return
+        
+        should_record = msg.data
+        
+        if should_record and not self.recording_active:
+            # Start recording this segment
+            self.recording_active = True
+            self.rec.Reset()  # Clear previous audio
+            self.get_logger().info('🎤 Recording segment started')
+            
+        elif not should_record and self.recording_active:
+            # Stop recording and extract speaker vector
+            self.recording_active = False
+            self._process_recorded_segment()
+    
+    def _process_recorded_segment(self):
+        """Process the currently recorded segment and extract speaker vector."""
+        try:
+            # Get final result from recognizer
+            final_result = json.loads(self.rec.FinalResult())
+            
+            if 'spk' in final_result:
+                self.speaker_vectors.append(final_result['spk'])
+                self.get_logger().info(f'✅ Captured sample {len(self.speaker_vectors)}/{self.target_samples}')
+                
+                # Publish progress
+                progress = (len(self.speaker_vectors) / self.target_samples) * 100.0
+                progress_msg = Float32()
+                progress_msg.data = progress
+                self.progress_pub.publish(progress_msg)
+                
+                # Transcription feedback (optional)
+                if 'text' in final_result and final_result['text']:
+                    self.get_logger().debug(f'Transcribed: "{final_result["text"]}"')
+            else:
+                self.get_logger().warn('No speaker data in this segment')
+                
+        except Exception as e:
+            self.get_logger().error(f'Error processing segment: {e}')
+    
+    def finish_calibration_callback(self, msg):
+        """Finish calibration and save profile."""
+        if not self.is_calibrating:
+            return
+        
+        if len(self.speaker_vectors) < 3:
+            self.get_logger().error(f'Insufficient samples: {len(self.speaker_vectors)} (need at least 3)')
+            status_msg = String()
+            status_msg.data = 'error:insufficient_samples'
+            self.status_pub.publish(status_msg)
+            self.cleanup_calibration()
+            return
+        
+        try:
+            # Average the vectors
+            avg_vector = np.mean(self.speaker_vectors, axis=0)
+            self.speaker_profiles[self.current_speaker_name] = avg_vector.tolist()
+            self.save_profiles()
+            
+            self.get_logger().info(f'✅ Calibrated "{self.current_speaker_name}" with {len(self.speaker_vectors)} samples')
+            
+            # Publish success
+            status_msg = String()
+            status_msg.data = f'success:{self.current_speaker_name}:{len(self.speaker_vectors)}'
+            self.status_pub.publish(status_msg)
+            
+        except Exception as e:
+            self.get_logger().error(f'Failed to save calibration: {e}')
+            status_msg = String()
+            status_msg.data = f'error:save_failed:{e}'
             self.status_pub.publish(status_msg)
         
         finally:
-            self.is_calibrating = False
-            
-            # Publish 100% progress
-            progress_msg = Float32()
-            progress_msg.data = 100.0
-            self.progress_pub.publish(progress_msg)
+            self.cleanup_calibration()
+    
+    def cleanup_calibration(self):
+        """Clean up audio resources after calibration."""
+        if self.stream:
+            self.stream.stop_stream()
+            self.stream.close()
+            self.stream = None
+        
+        if self.p:
+            self.p.terminate()
+            self.p = None
+        
+        self.is_calibrating = False
+        self.recording_active = False
+        self.current_speaker_name = None
+        self.speaker_vectors = []
+        
+        self.get_logger().info('Calibration session ended')
+    
+    def destroy_node(self):
+        """Cleanup on shutdown."""
+        self.cleanup_calibration()
+        super().destroy_node()
 
 
 def main(args=None):
