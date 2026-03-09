@@ -31,6 +31,8 @@ setup(
             'speaker_recognition_node = makimate_asr.speaker_recognition_node:main',
             'calibration_workflow = makimate_asr.calibration_workflow_node:main',
             'realtime_display_logger = makimate_asr.realtime_display_logger:main',
+            #NEW
+            'respeaker_whisper_asr = makimate_asr.respeaker_whisper_asr:main',
         ],
     }
 
