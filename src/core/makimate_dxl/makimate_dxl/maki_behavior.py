@@ -168,7 +168,18 @@ class MakiBehavior(Node):
     
         # Optional: convert to servo pulses if your driver expects integer units
         # (Assuming 12-bit encoder, 0–360° → 0–4095)
-        arr_pulse = [int((val + 180.0) * (4095.0 / 360.0)) for val in arr_clamped]
+        # arr_pulse = [int((val + 180.0) * (4095.0 / 360.0)) for val in arr_clamped]
+        arr_pulse = [
+            int(max(p_min, min(p_max, 2048 + val_deg * 4096/360.0)))
+            for val_deg, (p_min, p_max) in zip(arr_clamped, [
+                (1946, 2150),  # ID1
+                (1642, 2454),  # ID2
+                (2014, 2082),  # ID3
+                (1642, 2454),  # ID4
+                (2030, 2066),  # ID5
+                (2030, 2066),  # ID6
+            ])
+        ]
     
         msg = Float64MultiArray()
         msg.data = arr_pulse
