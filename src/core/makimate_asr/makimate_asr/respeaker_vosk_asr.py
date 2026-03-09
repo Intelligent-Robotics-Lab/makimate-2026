@@ -137,14 +137,14 @@ class ReSpeakerVoskASR(Node):
             if not enabled:
                 # STOP the audio stream to prevent buffering
                 if self.stream and not self.stream.stopped:
-                    self.stream.stop_stream()
+                    self.stream.stop()
                 # Clear any buffered audio
                 with self.audio_q.mutex:
                     self.audio_q.queue.clear()
             else:
                 # RESTART the audio stream
                 if self.stream and self.stream.stopped:
-                    self.stream.start_stream()
+                    self.stream.start()
                 # Reset recognizer to clear any partial state
                 self.recognizer = KaldiRecognizer(self.model, int(self.sample_rate))
                 self.recognizer.SetWords(True)
