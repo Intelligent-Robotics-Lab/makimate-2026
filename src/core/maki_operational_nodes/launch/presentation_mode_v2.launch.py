@@ -266,7 +266,9 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        asr_node,
+        #asr_node,    # commented out for below new
+        whisper_asr_node, #new
+        vosk_embeddings_node, #new
         voice_calibration_node,
         speaker_recognition_node,
         calibration_workflow_node,
