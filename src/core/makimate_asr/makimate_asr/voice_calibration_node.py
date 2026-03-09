@@ -264,39 +264,55 @@ class VoiceCalibrationNode(Node):
                 
         except Exception as e:
             self.get_logger().error(f'Error processing segment: {e}')
-    
+        
     def finish_calibration_callback(self, msg):
         """Finish calibration and save profile."""
         if not self.is_calibrating:
             return
-        
-        if len(self.speaker_vectors) < 3:
-            self.get_logger().error(f'Insufficient samples: {len(self.speaker_vectors)} (need at least 3)')
+    
+        # Stop recording if still active
+        self.recording_active = False
+    
+        # Wait for recording thread to finish processing
+        if self.recording_thread:
+            self.recording_thread.join(timeout=2.0)
+            self.recording_thread = None
+    
+        # Now check collected samples
+        if len(self.speaker_vectors) < self.target_samples:
+            self.get_logger().error(
+                f'Insufficient samples: {len(self.speaker_vectors)} (need at least {self.target_samples})'
+            )
+    
             status_msg = String()
             status_msg.data = 'error:insufficient_samples'
             self.status_pub.publish(status_msg)
+    
             self.cleanup_calibration()
             return
-        
+    
         try:
-            # Average the vectors
+            # Average speaker vectors
             avg_vector = np.mean(self.speaker_vectors, axis=0)
+    
             self.speaker_profiles[self.current_speaker_name] = avg_vector.tolist()
             self.save_profiles()
-            
-            self.get_logger().info(f'✅ Calibrated "{self.current_speaker_name}" with {len(self.speaker_vectors)} samples')
-            
-            # Publish success
+    
+            self.get_logger().info(
+                f'✅ Calibrated "{self.current_speaker_name}" with {len(self.speaker_vectors)} samples'
+            )
+    
             status_msg = String()
             status_msg.data = f'success:{self.current_speaker_name}:{len(self.speaker_vectors)}'
             self.status_pub.publish(status_msg)
-            
+    
         except Exception as e:
             self.get_logger().error(f'Failed to save calibration: {e}')
+    
             status_msg = String()
             status_msg.data = f'error:save_failed:{e}'
             self.status_pub.publish(status_msg)
-        
+    
         finally:
             self.cleanup_calibration()
     
