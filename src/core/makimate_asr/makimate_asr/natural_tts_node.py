@@ -76,8 +76,9 @@ class NaturalTTS(Node):
 
         # ---------- Backend init ----------
         self.engine: Optional["pyttsx3.Engine"] = None
-        #NEW: Piper process
         self.piper_process = None
+        self.piper_speaking = None
+        self.piper_monitor_thread = None
         
         if self.backend == "pyttsx3":
             self._init_pyttsx3()
@@ -100,7 +101,7 @@ class NaturalTTS(Node):
         )
         self._worker_thread.start()
 
-        # Track whether we’re in the middle of an utterance (for ASR control)
+        # Track whether we're in the middle of an utterance (for ASR control)
         self._currently_speaking = False
         # Track last time any TTS activity happened (enqueue or audio finished)
         self._last_tts_activity_time = time.time()
@@ -181,20 +182,20 @@ class NaturalTTS(Node):
                 ".'",
                 "!'",
                 "?'",
-                "?”",
-                "!”",
+                "?"",
+                "!"",
                 '"',
                 "''",
             }
 
             def is_apostrophe_clitic(tok: str) -> bool:
                 """
-                True for things like "'t", "'s", "’t", "’s" that should attach
+                True for things like "'t", "'s", "'t", "'s" that should attach
                 to the previous word with no space.
                 """
                 if len(tok) < 2:
                     return False
-                if tok[0] in {"'", "’"} and tok[1].isalpha():
+                if tok[0] in {"'", "'"} and tok[1].isalpha():
                     return True
                 return False
 
@@ -364,7 +365,7 @@ class NaturalTTS(Node):
             str(self.noise_w),
             "--sentence_silence",
             str(self.sentence_silence),
-            "--json-input",  # Accept JSON input for streaming
+            "--json-input",
         ]
         
         piper_cmd_str = " ".join(shlex.quote(c) for c in piper_cmd)
@@ -375,8 +376,18 @@ class NaturalTTS(Node):
                 full_cmd,
                 shell=True,
                 stdin=subprocess.PIPE,
-                bufsize=0  # Unbuffered
+                stderr=subprocess.PIPE,  # Capture stderr to monitor completion
+                bufsize=0
             )
+            
+            # Start thread to monitor stderr for completion messages
+            self.piper_speaking = threading.Event()
+            self.piper_monitor_thread = threading.Thread(
+                target=self._monitor_piper_output,
+                daemon=True
+            )
+            self.piper_monitor_thread.start()
+            
             self.get_logger().info(
                 f"Piper backend ready (persistent process):\n"
                 f"  command={self.piper_command}\n"
@@ -384,6 +395,25 @@ class NaturalTTS(Node):
             )
         except Exception as e:
             self.get_logger().error(f"Failed to start piper process: {e}")
+    
+    def _monitor_piper_output(self):
+        """Monitor piper's stderr to detect when audio finishes playing."""
+        while self.piper_process and self.piper_process.stderr:
+            try:
+                line = self.piper_process.stderr.readline()
+                if not line:
+                    break
+                
+                line_str = line.decode('utf-8', errors='ignore').strip()
+                
+                # Piper outputs this when audio finishes playing
+                if 'Real-time factor:' in line_str:
+                    self.piper_speaking.clear()  # Signal that speaking finished
+                    self.get_logger().debug(f"Piper completed: {line_str}")
+                    
+            except Exception as e:
+                self.get_logger().warn(f"Piper monitor error: {e}")
+                break
 
     # ======================================================================
     # ASR control
@@ -431,9 +461,6 @@ class NaturalTTS(Node):
                     self._speak_piper_cli(text)
             except Exception as e:
                 self.get_logger().error(f"TTS error: {e}")
-            # No artificial sleep here; we just loop and either grab the next
-            # chunk or, if none arrives for _utterance_done_seconds, we
-            # consider the utterance finished and unmute once.
 
     # ======================================================================
     # Backend speak methods
@@ -460,12 +487,21 @@ class NaturalTTS(Node):
         self.get_logger().info(f"[piper_cli] Speaking: {text!r}")
         
         try:
-            if self.piper_process.stdin:
+            if self.piper_process.stdin and self.piper_speaking is not None:
+                # Signal that we're about to speak
+                self.piper_speaking.set()
+                
                 # Send text as JSON
                 import json
                 json_input = json.dumps({"text": text.strip()}) + "\n"
                 self.piper_process.stdin.write(json_input.encode("utf-8"))
                 self.piper_process.stdin.flush()
+                
+                # Wait for piper to finish playing (with timeout)
+                finished = self.piper_speaking.wait(timeout=30.0)
+                if not finished:
+                    self.get_logger().warn("Piper timeout - continuing anyway")
+                
             self._last_tts_activity_time = time.time()
         except Exception as e:
             self.get_logger().error(f"[piper_cli] Error writing to Piper: {e}")
@@ -482,7 +518,6 @@ class NaturalTTS(Node):
                 self.engine.stop()
             except Exception:
                 pass
-        # ADD THIS:
         if self.piper_process:
             try:
                 self.piper_process.stdin.close()
