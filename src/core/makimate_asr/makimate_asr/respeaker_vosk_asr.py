@@ -57,6 +57,8 @@ class ReSpeakerVoskASR(Node):
         enable_topic = self.get_parameter('enable_topic').value
         self.listening_enabled = True  # default: ASR is on
 
+        #NEW
+        self.enabled = True
 
         # -------------------------
         # Publishers
