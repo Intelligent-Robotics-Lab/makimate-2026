@@ -145,46 +145,42 @@ class MakiBehavior(Node):
     # Helper to publish joint goals (raw)
     # ------------------------------------------
     def send(self, arr):
-        """Send joint goals with detailed logging."""
-        
+        """
+        Sends joint goals safely, clamping each joint to its allowed range.
+        arr_deg: [yaw, pitch, eye_pitch, eye_yaw, lid_left, lid_right] in degrees
+        """
+    
+        # Joint limits (example safe ranges, adjust if needed)
         limits_deg = [
-            (-9.0, 9.0),     # yaw (ID 1)
+            (-90.0, 90.0),   # yaw (ID 1)        # troublemaker ID 1     (-90.0, 90.0)
             (-45.0, 45.0),   # pitch (ID 2)
-            (-3.0, 3.0),     # eye_pitch (ID 3)
+            (-30.0, 30.0),   # eye_pitch (ID 3)        # troublemaker ID 3     (-30.0, 30.0)
             (-30.0, 30.0),   # eye_yaw (ID 4)
             (-20.0, 26.0),   # lid_left (ID 5)
             (-26.0, 20.0),   # lid_right (ID 6)
         ]
-        
-        # Clamp each value and LOG what's happening
-        arr_clamped = []
-        for i, (val, lim) in enumerate(zip(arr, limits_deg)):
-            clamped = max(lim[0], min(lim[1], val))
-            if clamped != val:
-                print(f"⚠️ ID{i+1}: Input {val:.2f}° was clamped to {clamped:.2f}° (limit: {lim})")
-            arr_clamped.append(clamped)
-        
-        pulse_ranges = [
-            (1946, 2150),  # ID1
-            (1642, 2454),  # ID2
-            (2014, 2082),  # ID3
-            (2030, 2066),  # ID4 - WAIT, this is wrong! Should be (1642, 2454)
-            (2030, 2066),  # ID5
-            (2030, 2066),  # ID6
+    
+        # Clamp each value
+        arr_clamped = [
+            max(lim[0], min(lim[1], val))
+            for val, lim in zip(arr, limits_deg)
         ]
-        
-        arr_pulse = []
-        for i, (val_deg, (p_min, p_max)) in enumerate(zip(arr_clamped, pulse_ranges)):
-            pulse = int(2048 + val_deg * 4096/360.0)
-            pulse_clamped = max(p_min, min(p_max, pulse))
-            
-            if pulse != pulse_clamped:
-                print(f"❌ ID{i+1}: Pulse {pulse} exceeds range ({p_min}, {p_max})! Deg: {val_deg:.2f}")
-            
-            arr_pulse.append(pulse_clamped)
-        
-        print(f"Sending: deg={[f'{x:.1f}' for x in arr_clamped]} → pulse={arr_pulse}")
-        
+    
+        # Optional: convert to servo pulses if your driver expects integer units
+        # (Assuming 12-bit encoder, 0–360° → 0–4095)
+        # arr_pulse = [int((val + 180.0) * (4095.0 / 360.0)) for val in arr_clamped]
+        arr_pulse = [
+            int(max(p_min, min(p_max, 2048 + val_deg * 4096/360.0)))
+            for val_deg, (p_min, p_max) in zip(arr_clamped, [
+                (1946, 2150),  # ID1
+                (1642, 2454),  # ID2
+                (2014, 2082),  # ID3
+                (1642, 2454),  # ID4
+                (2030, 2066),  # ID5
+                (2030, 2066),  # ID6
+            ])
+        ]
+    
         msg = Float64MultiArray()
         msg.data = arr_pulse
         self.pub.publish(msg)
