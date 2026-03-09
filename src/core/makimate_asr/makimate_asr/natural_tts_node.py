@@ -487,25 +487,24 @@ class NaturalTTS(Node):
         self.get_logger().info(f"[piper_cli] Speaking: {text!r}")
         
         try:
-            if self.piper_process.stdin and self.piper_speaking is not None:
-                # Signal that we're about to speak
-                self.piper_speaking.set()
-                
+            if self.piper_process.stdin:
                 # Send text as JSON
                 import json
                 json_input = json.dumps({"text": text.strip()}) + "\n"
                 self.piper_process.stdin.write(json_input.encode("utf-8"))
                 self.piper_process.stdin.flush()
                 
-                # Wait for piper to finish playing (with timeout)
-                finished = self.piper_speaking.wait(timeout=30.0)
-                if not finished:
-                    self.get_logger().warn("Piper timeout - continuing anyway")
+                # SIMPLE FIX: Estimate audio duration
+                # Rough estimate: ~15 characters per second of speech
+                estimated_duration = max(0.5, len(text) / 15.0)
+                
+                # Add 0.5s buffer for audio playback latency
+                import time
+                time.sleep(estimated_duration + 0.5)
                 
             self._last_tts_activity_time = time.time()
         except Exception as e:
             self.get_logger().error(f"[piper_cli] Error writing to Piper: {e}")
-            # Process died, will restart on next call
             self.piper_process = None
 
     # ======================================================================
