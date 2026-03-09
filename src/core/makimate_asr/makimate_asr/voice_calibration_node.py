@@ -56,6 +56,7 @@ class VoiceCalibrationNode(Node):
         self.speaker_vectors = []
         self.asr_enabled = False
         self.recording_active = False
+        self.recording_thread = None
         
         # Audio setup
         self.p = None
@@ -147,42 +148,51 @@ class VoiceCalibrationNode(Node):
         self.current_speaker_name = speaker_name
         self.speaker_vectors = []
         
-        # Initialize audio stream and recognizer
-        try:
-            self.rec = KaldiRecognizer(self.model, self.sample_rate)
-            self.rec.SetSpkModel(self.spk_model)
-            
-            self.p = pyaudio.PyAudio()
-            self.stream = self.p.open(
-                format=pyaudio.paInt16,
-                channels=1,
-                rate=self.sample_rate,
-                input=True,
-                input_device_index=1,  # ReSpeaker
-                frames_per_buffer=4000
-            )
-            
-            self.get_logger().info('Audio stream initialized')
-            
-            # Publish status
-            status_msg = String()
-            status_msg.data = f'started:{speaker_name}'
-            self.status_pub.publish(status_msg)
-            
-        except Exception as e:
-            self.get_logger().error(f'Failed to initialize audio: {e}')
-            status_msg = String()
-            status_msg.data = f'error:audio_init:{e}'
-            self.status_pub.publish(status_msg)
-            self.cleanup_calibration()
+        # Initialize recognizer but DON'T open audio stream yet
+        self.rec = KaldiRecognizer(self.model, self.sample_rate)
+        self.rec.SetSpkModel(self.spk_model)
+        
+        # Publish status
+        status_msg = String()
+        status_msg.data = f'started:{speaker_name}'
+        self.status_pub.publish(status_msg)
+        
+        self.get_logger().info('Waiting for TTS to finish before opening microphone...')
     
     def asr_enable_callback(self, msg):
         """Track when ASR is enabled/disabled (TTS finished/started)."""
         self.asr_enabled = msg.data
         
         if self.is_calibrating:
-            if self.asr_enabled and not self.recording_active:
-                # ASR just re-enabled (TTS finished) - signal ready to record
+            # Open audio stream on FIRST asr_enable after calibration starts
+            if self.asr_enabled and self.stream is None:
+                self.get_logger().info('TTS finished - opening microphone now')
+                try:
+                    self.p = pyaudio.PyAudio()
+                    self.stream = self.p.open(
+                        format=pyaudio.paInt16,
+                        channels=1,
+                        rate=self.sample_rate,
+                        input=True,
+                        input_device_index=1,  # ReSpeaker
+                        frames_per_buffer=4000
+                    )
+                    self.get_logger().info('✅ Audio stream initialized - ready to record')
+                    
+                    # Signal ready
+                    ready_msg = Bool()
+                    ready_msg.data = True
+                    self.ready_pub.publish(ready_msg)
+                    
+                except Exception as e:
+                    self.get_logger().error(f'Failed to open microphone: {e}')
+                    status_msg = String()
+                    status_msg.data = f'error:audio_init:{e}'
+                    self.status_pub.publish(status_msg)
+                    self.cleanup_calibration()
+            
+            elif self.asr_enabled and not self.recording_active and self.stream is not None:
+                # ASR re-enabled (TTS finished) - signal ready to record next segment
                 ready_msg = Bool()
                 ready_msg.data = True
                 self.ready_pub.publish(ready_msg)
@@ -190,7 +200,7 @@ class VoiceCalibrationNode(Node):
     
     def record_segment_callback(self, msg):
         """Start/stop recording a segment."""
-        if not self.is_calibrating:
+        if not self.is_calibrating or self.stream is None:
             return
         
         should_record = msg.data
@@ -201,9 +211,33 @@ class VoiceCalibrationNode(Node):
             self.rec.Reset()  # Clear previous audio
             self.get_logger().info('🎤 Recording segment started')
             
+            # Start background thread to read audio
+            self.recording_thread = threading.Thread(target=self._record_loop, daemon=True)
+            self.recording_thread.start()
+            
         elif not should_record and self.recording_active:
-            # Stop recording and extract speaker vector
+            # Stop recording
             self.recording_active = False
+            self.get_logger().info('⏹️  Recording segment stopped')
+            # Processing happens in _record_loop when it exits
+    
+    def _record_loop(self):
+        """Background thread that reads audio while recording_active is True."""
+        while self.recording_active and self.stream:
+            try:
+                data = self.stream.read(4000, exception_on_overflow=False)
+                
+                if self.rec.AcceptWaveform(data):
+                    result = json.loads(self.rec.Result())
+                    if 'text' in result and result['text']:
+                        self.get_logger().debug(f'Heard: "{result["text"]}"')
+            
+            except Exception as e:
+                self.get_logger().warn(f'Audio read error: {e}')
+                break
+        
+        # Recording stopped, process the segment
+        if self.is_calibrating:
             self._process_recorded_segment()
     
     def _process_recorded_segment(self):
@@ -268,6 +302,12 @@ class VoiceCalibrationNode(Node):
     
     def cleanup_calibration(self):
         """Clean up audio resources after calibration."""
+        self.recording_active = False
+        
+        if self.recording_thread:
+            self.recording_thread.join(timeout=1.0)
+            self.recording_thread = None
+        
         if self.stream:
             self.stream.stop_stream()
             self.stream.close()
@@ -278,7 +318,6 @@ class VoiceCalibrationNode(Node):
             self.p = None
         
         self.is_calibrating = False
-        self.recording_active = False
         self.current_speaker_name = None
         self.speaker_vectors = []
         
