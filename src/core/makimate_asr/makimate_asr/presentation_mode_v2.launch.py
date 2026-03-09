@@ -39,7 +39,7 @@ def generate_launch_description():
               "-p spk_model_path:=/home/emanuel/vosk_models/vosk-model-spk-0.4 "
               "-p profile_file:=/home/emanuel/speaker_profiles.pkl "
               "-p calibration_duration:=10 "
-              "-p sample_rate:=16000 " \
+              "-p sample_rate:=16000 "
               "-p recording_delay:=1.5"
         ],
         output="screen",
