@@ -185,6 +185,7 @@ class MakiDxl6(Node):
             ticks = max(
                 self.min_ticks[dxl_id] + 1,
                 min(self.max_ticks[dxl_id] - 1, ticks)
+            )
 
             result, error = self.packet_handler.write4ByteTxRx(
                 self.port_handler, dxl_id,
