@@ -125,21 +125,29 @@ class ReSpeakerVoskASR(Node):
         self.audio_q.put(data)
 
     def _on_enable(self, msg: Bool):
-        new_state = bool(msg.data)
-        if new_state == self.listening_enabled:
-            return
-
-        self.listening_enabled = new_state
-        if not new_state:
-            self.get_logger().info("ASR disabled: flushing input queue.")
-            # Clear queued audio so we don't process TTS audio later
-            try:
+        """Handle ASR enable/disable from TTS."""
+        enabled = bool(msg.data)
+        if enabled != self.enabled:
+            self.enabled = enabled
+            state = "enabled" if enabled else "disabled"
+            self.get_logger().info(f'ASR {state}: {"will resume" if enabled else "pausing stream"}.')
+            
+            if not enabled:
+                # STOP the audio stream to prevent buffering
+                if self.stream and self.stream.is_active():
+                    self.stream.stop_stream()
+                # Clear any buffered audio
                 with self.audio_q.mutex:
                     self.audio_q.queue.clear()
-            except Exception:
-                pass
-        else:
-            self.get_logger().info("ASR enabled: will resume publishing text.")
+            else:
+                # RESTART the audio stream
+                if self.stream and not self.stream.is_active():
+                    self.stream.start_stream()
+                # Reset recognizer to clear any partial state
+                self.recognizer = KaldiRecognizer(self.model, int(self.sample_rate))
+                self.recognizer.SetWords(True)
+                if self.spk_model:
+                    self.recognizer.SetSpkModel(self.spk_model)
 
 
 
