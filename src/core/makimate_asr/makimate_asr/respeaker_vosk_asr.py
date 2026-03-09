@@ -221,6 +221,13 @@ class ReSpeakerVoskASR(Node):
             return None
 
     def _publish_text(self, text: str):
+
+        #NEW
+        """Publish recognized text."""
+        if not self.publish_text:  # NEW: Skip if disabled
+            return
+        #NEW END
+
         if not self.listening_enabled:
             self.get_logger().info(f"ASR muted, ignoring text: {text!r}")
             return
