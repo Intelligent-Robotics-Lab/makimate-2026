@@ -22,12 +22,12 @@ TICKS_PER_DEG = TICKS_PER_REV / DEG_PER_REV  # ~11.38 ticks/deg
 # ROBOT-SPECIFIC LIMITS (EDIT HERE FOR DIFFERENT ROBOTS)
 # ----------------------------------------------------
 ROBOT_LIMITS = {
-    1: {"min": 2640, "max": 3641},  # neck_yaw
-    2: {"min": 1855, "max": 2324},  # neck_pitch
-    3: {"min": 2352, "max": 2635},  # eyes_pitch
-    4: {"min": 1679, "max": 2495},  # eyes_yaw
-    5: {"min": 2378, "max": 3057},  # lid_left
-    6: {"min": 1021, "max": 1699},  # lid_right
+    1: {"min": 28, "max": 570},
+    2: {"min": 1748, "max": 2348},
+    3: {"min": 532, "max": 1467},
+    4: {"min": 1809, "max": 2241},
+    5: {"min": 2432, "max": 3121},
+    6: {"min": 1097, "max": 1786},
 }
 
 
@@ -126,9 +126,9 @@ class MakiDxl6(Node):
         # Enable torque on all motors
         for dxl_id in self.ids:
             #NEW: disable ID1, ID3
-            if dxl_id in [1, 3, 4]:  # Skip problematic servos
-                self.get_logger().warn(f"Skipping torque enable for ID {dxl_id} (disabled)")
-                continue
+            #if dxl_id in [1, 3, 4]:  # Skip problematic servos
+             #   self.get_logger().warn(f"Skipping torque enable for ID {dxl_id} (disabled)")
+              #  continue
             # end
             result, error = self.packet_handler.write1ByteTxRx(
                 self.port_handler, dxl_id,
@@ -180,8 +180,8 @@ class MakiDxl6(Node):
 
         for idx, (dxl_id, angle_rel) in enumerate(zip(self.ids, values)):
             #NEW: disable problematic servos
-            if dxl_id in [1, 3, 4]:
-                continue
+           # if dxl_id in [1, 3, 4]:
+               # continue
             #end
             # Clamp to software limits
             min_d = self.min_rel_deg.get(dxl_id, -30.0)
