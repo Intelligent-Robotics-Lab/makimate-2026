@@ -151,7 +151,7 @@ class MakiBehavior(Node):
         """
         # Just clamp to reasonable degree limits and send
         limits_deg = [
-            (-40.0, 40.0),   # yaw (ID 1)
+            (-23.0, 23.0),   # yaw (ID 1); reduced from (-40.0, 40.0),
             (-20.0, 20.0),   # pitch (ID 2)
             (-15.0, 15.0),   # eye_pitch (ID 3)
             (-20.0, 20.0),   # eye_yaw (ID 4)
@@ -276,7 +276,7 @@ class MakiBehavior(Node):
     def start_find_me(self):
         def step_timer():
             self.phase += 0.035
-            yaw = 18.0 * math.sin(self.phase)
+            yaw = 15.0 * math.sin(self.phase)                            # changed from 18.0 to 15.0
             self.send_with_blink(yaw, 0.0, 0.0, 0.0, 20.0, -20.0)
         t = self.create_timer(0.05, step_timer)
         self._timers.append(t)
@@ -302,7 +302,7 @@ class MakiBehavior(Node):
 
         def choose_new_target():
             # Random yaw left/right and pitch up/down
-            state["target_yaw"] = random.uniform(-18.0, 18.0)
+            state["target_yaw"] = random.uniform(-15.0, 15.0)            # changed from -18.0, 18.0
             state["target_pitch"] = random.uniform(-6.0, 6.0)
 
             # How long to hold once we've reached the target (in timer ticks)
