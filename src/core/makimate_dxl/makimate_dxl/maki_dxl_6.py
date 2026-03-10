@@ -126,7 +126,7 @@ class MakiDxl6(Node):
         # Enable torque on all motors
         for dxl_id in self.ids:
             #NEW: disable ID1, ID3
-            if dxl_id in [1, 3]:  # Skip problematic servos
+            if dxl_id in [1, 3, 4]:  # Skip problematic servos
                 self.get_logger().warn(f"Skipping torque enable for ID {dxl_id} (disabled)")
                 continue
             # end
@@ -179,6 +179,10 @@ class MakiDxl6(Node):
             return
 
         for idx, (dxl_id, angle_rel) in enumerate(zip(self.ids, values)):
+            #NEW: disable problematic servos
+            if dxl_id in [1, 3, 4]:
+                continue
+            #end
             # Clamp to software limits
             min_d = self.min_rel_deg.get(dxl_id, -30.0)
             max_d = self.max_rel_deg.get(dxl_id, 30.0)
