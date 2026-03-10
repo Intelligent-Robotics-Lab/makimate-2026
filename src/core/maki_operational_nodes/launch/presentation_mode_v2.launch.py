@@ -239,11 +239,11 @@ def generate_launch_description():
         #llm_bridge,
         tts_node,
         led_node,
-        #maki_expressions, #
-        #maki_behavior_awake, #
-        #maki_dxl_node, #
-        #maki_behavior_node, # 
-        #camera_node, #
-        #face_tracker_node, #
-        #face_to_maki_node, #
+        maki_expressions, #
+        maki_behavior_awake, #
+        maki_dxl_node, #
+        maki_behavior_node, # 
+        camera_node, #
+        face_tracker_node, #
+        face_to_maki_node, #
     ])
