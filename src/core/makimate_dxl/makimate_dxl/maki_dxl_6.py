@@ -125,6 +125,11 @@ class MakiDxl6(Node):
 
         # Enable torque on all motors
         for dxl_id in self.ids:
+            #NEW: disable ID1, ID3
+            if dxl_id in [1, 3]:  # Skip problematic servos
+                self.get_logger().warn(f"Skipping torque enable for ID {dxl_id} (disabled)")
+                continue
+            # end
             result, error = self.packet_handler.write1ByteTxRx(
                 self.port_handler, dxl_id,
                 self.ADDR_TORQUE_ENABLE, self.TORQUE_ENABLE
