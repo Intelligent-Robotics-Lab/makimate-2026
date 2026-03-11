@@ -119,34 +119,19 @@ class ASRCommandRouter(Node):
             
         # Handle "hi" greetings when awake
         if any(word in low.split() for word in ['hi', 'hello', 'hey']):
-            self.get_logger().info("Greeting detected, waiting for speaker recognition...")
+            # Simple approach: just wait a bit for the callback to execute
+            import time
+            time.sleep(0.6)  # Give callback time to execute (was 0.5, increase to 0.6)
             
-            # Wait for the speaker identification message with timeout
-            try:
-                success, speaker_msg = wait_for_message(
-                    String,
-                    self,
-                    '/voice/identified_speaker',
-                    time_to_wait=0.5
-                )
-                
-                if success and speaker_msg:
-                    speaker = speaker_msg.data
-                    self.get_logger().info(f"Got speaker from wait_for_message: {speaker}")
-                else:
-                    speaker = "Unknown"
-                    
-            except Exception as e:
-                self.get_logger().warn(f"No speaker message received: {e}")
-                speaker = "Unknown"
+            # Use the callback-updated value
+            speaker = self.current_speaker
             
-            # Generate greeting
             if speaker and speaker != "Unknown":
                 response = f"Hi {speaker}!"
             else:
                 response = f"Hi there!"
             
-            self.get_logger().info(f"Greeting response: {response}")
+            self.get_logger().info(f"Greeting: {response} (current_speaker={speaker})")
             self._speak_immediate(response)
             return
 
