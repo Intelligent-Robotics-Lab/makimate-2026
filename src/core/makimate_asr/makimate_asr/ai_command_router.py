@@ -156,8 +156,17 @@ class ASRCommandRouter(Node):
             # NEW: Wait a moment for speaker recognition to update
 
             self.get_logger().info(f"BEFORE delay: current_speaker = {self.current_speaker}")    #NEW
+            
+            #NEW: Spin to process callbacks instead of just sleeping
+            start_time = time.time()
+            while time.time() - start_time < 0.3:
+                rclpy.spin_once(self, timeout_sec=0.01)
+                
+            """
             import time
             time.sleep(0.4)  # 400ms delay needed
+            """
+            
             self.get_logger().info(f"AFTER delay: current_speaker = {self.current_speaker}")    #NEW
             
             if self.current_speaker and self.current_speaker != "Unknown":
