@@ -119,21 +119,37 @@ class ASRCommandRouter(Node):
             
         # Handle "hi" greetings when awake
         if any(word in low.split() for word in ['hi', 'hello', 'hey']):
-            # Give the speaker callback time to execute by spinning the executor
-            import time
-            start = time.time()
-            while time.time() - start < 0.1:  # 100ms should be plenty
-                rclpy.spin_once(self, timeout_sec=0.01)  # Let callbacks execute
+            self.get_logger().info("Greeting detected, waiting for speaker recognition...")
             
-            # Use the callback-updated value
-            speaker = self.current_speaker
+            # Wait for the speaker identification message with timeout
+            try:
+                success, speaker_msg = wait_for_message(
+                    String,
+                    self,
+                    '/voice/identified_speaker',
+                    time_to_wait=0.5
+                )
+                
+                self.get_logger().info(f"wait_for_message returned: success={success}, msg={speaker_msg}")  # DEBUG
+                
+                if success and speaker_msg:
+                    speaker = speaker_msg.data
+                    self.get_logger().info(f"Got speaker from wait_for_message: {speaker}")
+                else:
+                    speaker = "Unknown"
+                    self.get_logger().warn(f"wait_for_message failed: success={success}")
+                    
+            except Exception as e:
+                self.get_logger().warn(f"No speaker message received: {e}")
+                speaker = "Unknown"
             
+            # Generate greeting
             if speaker and speaker != "Unknown":
                 response = f"Hi {speaker}!"
             else:
                 response = f"Hi there!"
             
-            self.get_logger().info(f"Greeting: {response} (current_speaker={speaker})")
+            self.get_logger().info(f"Greeting response: {response}")
             self._speak_immediate(response)
             return
 
