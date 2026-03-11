@@ -30,6 +30,16 @@ ROBOT_LIMITS = {
     6: {"min": 1097, "max": 1786},
 }
 
+# ACTUAL NEUTRAL POSITIONS
+ROBOT_NEUTRAL_POSITIONS = {
+    1: 460,   # neck yaw - actual resting position
+    2: 2077,  # neck pitch
+    3: 1000,  # eyes pitch
+    4: 2028,  # eyes yaw
+    5: 3007,  # lid left
+    6: 1209,  # lid right
+}
+
 
 class MakiDxl6(Node):
     """
@@ -69,11 +79,14 @@ class MakiDxl6(Node):
         self.max_ticks = {i: raw_limits[i]["max"] for i in raw_limits}
 
         # Auto-neutral calculation
-        self.neutral_ticks = {
-            i: int((self.min_ticks[i] + self.max_ticks[i]) / 2)
-            for i in raw_limits
-        }
+        #self.neutral_ticks = {
+         #   i: int((self.min_ticks[i] + self.max_ticks[i]) / 2)
+          #  for i in raw_limits
+        #}
 
+        #NEW: replaces above auto-neutral calculation
+        self.neutral_ticks = ROBOT_NEUTRAL_POSITIONS
+        #end
         # ----------------------------------------
         # SOFTWARE RELATIVE ANGLE LIMITS (DEG)
         # ----------------------------------------
