@@ -174,7 +174,7 @@ class VoiceCalibrationNode(Node):
                         channels=1,
                         rate=self.sample_rate,
                         input=True,
-                        input_device_index=1,  # ReSpeaker
+                        input_device_index=2,  # ReSpeaker
                         frames_per_buffer=4000
                     )
                     self.get_logger().info('✅ Audio stream initialized - ready to record')
