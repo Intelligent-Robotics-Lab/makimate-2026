@@ -195,20 +195,20 @@ class CalibrationWorkflowNode(Node):
         """Track progress as samples are collected."""
         if self.state != 'ASKING_QUESTIONS':
             return
-
+    
         progress = msg.data
         new_samples = int(progress * self.target_samples)
-
+    
         if new_samples > self.samples_collected:
             self.samples_collected = new_samples
             self.get_logger().info(f'Progress: {int(progress * 100)}% ({self.samples_collected}/{self.target_samples} samples)')
-
+    
             # Stop recording this segment
             self.recording = False
             stop_msg = Bool()
             stop_msg.data = False
             self.record_segment_pub.publish(stop_msg)
-
+    
             # Check if done
             if self.samples_collected >= self.target_samples:
                 self.get_logger().info('Enough samples collected, finishing calibration')
@@ -216,8 +216,11 @@ class CalibrationWorkflowNode(Node):
                 finish_msg.data = True
                 self.finish_calibration_pub.publish(finish_msg)
             else:
-                # Ask next question (will happen when calibration_ready fires)
-                self.get_logger().debug(f'Waiting to ask question {self.current_question_idx + 1}')
+                # Ask next question directly (don't wait for ready callback)
+                if self.current_question_idx < len(self.questions):
+                    question = self.questions[self.current_question_idx]
+                    self.speak(question)
+                    self.current_question_idx += 1
 
     def calibration_status_callback(self, msg):
         """Handle calibration completion status."""
