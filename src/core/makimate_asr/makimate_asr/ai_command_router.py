@@ -157,7 +157,7 @@ class ASRCommandRouter(Node):
 
             self.get_logger().info(f"BEFORE delay: current_speaker = {self.current_speaker}")    #NEW
             import time
-            time.sleep(0.2)  # 200ms delay needed
+            time.sleep(0.4)  # 400ms delay needed
             self.get_logger().info(f"AFTER delay: current_speaker = {self.current_speaker}")    #NEW
             
             if self.current_speaker and self.current_speaker != "Unknown":
