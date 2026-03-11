@@ -6,82 +6,60 @@ import time
 
 class ASRCommandRouter(Node):
     """
-    Extended to support multiple sleep phrases
-    (e.g., 'good bye', 'goodnight', 'good night')
-    and reset the LLM conversation when going to sleep.
+    Extended to support multiple sleep phrases and speaker recognition.
     """
 
-def __init__(self):
-    super().__init__("ai_command_router")
+    def __init__(self):
+        super().__init__("ai_command_router")
 
-    # Create callback groups for concurrent execution
-    from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
-    
-    # Speaker recognition can run concurrently with ASR processing
-    self.speaker_callback_group = ReentrantCallbackGroup()
-    self.asr_callback_group = MutuallyExclusiveCallbackGroup()
+        # ---- Parameters ----
+        self.declare_parameter("asr_topic", "/asr/text")
+        self.declare_parameter("llm_request_topic", "/llm/request")
+        self.declare_parameter("llm_response_topic", "/llm/response")
+        self.declare_parameter("awake_topic", "/maki/awake")
+        self.declare_parameter("tts_topic", "/llm/stream")
+        self.declare_parameter("asr_enable_topic", "/asr/enable")
+        self.declare_parameter("wake_phrase", "hello")
+        self.declare_parameter("sleep_phrase", "good bye")
+        self.declare_parameter("wake_greeting", "Hello! I'm awake and ready to talk. My name is Maki Mate, how may I help you.")
+        self.declare_parameter("sleep_farewell", "Goodbye! I'm going back to sleep now.")
 
-    # ---- Parameters ---- (keep all existing parameters)
-    self.declare_parameter("asr_topic", "/asr/text")
-    self.declare_parameter("llm_request_topic", "/llm/request")
-    self.declare_parameter("llm_response_topic", "/llm/response")
-    self.declare_parameter("awake_topic", "/maki/awake")
-    self.declare_parameter("tts_topic", "/llm/stream")
-    self.declare_parameter("asr_enable_topic", "/asr/enable")
-    self.declare_parameter("wake_phrase", "hello")
-    self.declare_parameter("sleep_phrase", "good bye")
-    self.declare_parameter("wake_greeting", "Hello! I'm awake and ready to talk. My name is Maki Mate, how may I help you.")
-    self.declare_parameter("sleep_farewell", "Goodbye! I'm going back to sleep now.")
+        asr_topic = self.get_parameter("asr_topic").value
+        llm_request_topic = self.get_parameter("llm_request_topic").value
+        awake_topic = self.get_parameter("awake_topic").value
+        tts_topic = self.get_parameter("tts_topic").value
+        asr_enable_topic = self.get_parameter("asr_enable_topic").value
 
-    asr_topic = self.get_parameter("asr_topic").value
-    llm_request_topic = self.get_parameter("llm_request_topic").value
-    awake_topic = self.get_parameter("awake_topic").value
-    tts_topic = self.get_parameter("tts_topic").value
-    asr_enable_topic = self.get_parameter("asr_enable_topic").value
+        self._wake_phrase = self.get_parameter("wake_phrase").value.lower()
+        self._sleep_phrase = self.get_parameter("sleep_phrase").value.lower()
+        self._wake_greeting = self.get_parameter("wake_greeting").value
+        self._sleep_farewell = self.get_parameter("sleep_farewell").value
 
-    self._wake_phrase = self.get_parameter("wake_phrase").value.lower()
-    self._sleep_phrase = self.get_parameter("sleep_phrase").value.lower()
-    self._wake_greeting = self.get_parameter("wake_greeting").value
-    self._sleep_farewell = self.get_parameter("sleep_farewell").value
+        self._sleep_phrases = [
+            self._sleep_phrase, "goodbye", "good night", "goodnight",
+            "night night", "good night maki", "goodnight maki", "good my", "dubai",
+        ]
+        self._reset_command = "/reset"
 
-    self._sleep_phrases = [
-        self._sleep_phrase, "goodbye", "good night", "goodnight",
-        "night night", "good night maki", "goodnight maki", "good my", "dubai",
-    ]
-    self._reset_command = "/reset"
+        # ---- Publishers ----
+        self._llm_req_pub = self.create_publisher(String, llm_request_topic, 10)
+        self._awake_pub = self.create_publisher(Bool, awake_topic, 10)
+        self._tts_pub = self.create_publisher(String, tts_topic, 10)
 
-    # ---- Publishers ----
-    self._llm_req_pub = self.create_publisher(String, llm_request_topic, 10)
-    self._awake_pub = self.create_publisher(Bool, awake_topic, 10)
-    self._tts_pub = self.create_publisher(String, tts_topic, 10)
+        # Speaker tracking
+        self.current_speaker = "Unknown"
 
-    # Speaker tracking
-    self.current_speaker = "Unknown"
-    self.latest_speaker_msg = None
+        # ---- Subscribers ----
+        self._asr_sub = self.create_subscription(String, asr_topic, self._on_asr, 10)
+        self._asr_enable_sub = self.create_subscription(Bool, asr_enable_topic, self._on_asr_enable, 10)
+        self.speaker_sub = self.create_subscription(String, '/voice/identified_speaker', self._on_speaker_identified, 10)
 
-    # ---- Subscribers with callback groups ----
-    self._asr_sub = self.create_subscription(
-        String, asr_topic, self._on_asr, 10,
-        callback_group=self.asr_callback_group
-    )
-    
-    self._asr_enable_sub = self.create_subscription(
-        Bool, asr_enable_topic, self._on_asr_enable, 10,
-        callback_group=self.asr_callback_group
-    )
+        # ---- State ----
+        self._awake = False
+        self._pending_sleep = False
 
-    # Speaker subscription uses REENTRANT group so it can run during ASR processing
-    self.speaker_sub = self.create_subscription(
-        String, '/voice/identified_speaker', self._on_speaker_identified, 10,
-        callback_group=self.speaker_callback_group
-    )
-
-    # ---- State ----
-    self._awake = False
-    self._pending_sleep = False
-
-    self._publish_awake(False)
-    self.get_logger().info("AICommandRouter started with concurrent callback groups.")
+        self._publish_awake(False)
+        self.get_logger().info("AICommandRouter started.")
 
     # ------------------------------------------------------------------ #
     # Helpers
@@ -113,29 +91,10 @@ def __init__(self):
     # ------------------------------------------------------------------ #
     # Callbacks
     # ------------------------------------------------------------------ #
-    # NEW: Speaker ID
     def _on_speaker_identified(self, msg):
         """Track who is currently speaking."""
-        self.latest_speaker_msg = msg  # Store the entire message
         self.current_speaker = msg.data
         self.get_logger().info(f'Speaker updated to: {self.current_speaker}')
-        #self.get_logger().debug(f'Current speaker: {self.current_speaker}')
-        #self.get_logger().info(f'Current speaker: {self.current_speaker}')    #NEW: changed from .debug to .info
-
-    def _get_current_speaker_with_wait(self, timeout=0.3):
-        """Wait and check for speaker updates."""
-        import time
-        start = time.time()
-        initial_speaker = self.current_speaker
-        
-        # Wait for speaker to potentially change
-        while time.time() - start < timeout:
-            time.sleep(0.05)
-            # Check if speaker changed during wait
-            if self.current_speaker != initial_speaker:
-                return self.current_speaker
-        
-        return self.current_speaker
     
     def _on_asr(self, msg: String):
         text = msg.data.strip()
@@ -186,18 +145,10 @@ def __init__(self):
             self._speak_immediate(response)
             return
             
-        # --------------------------------------------------
-        # Check any sleep phrase in list
-        # --------------------------------------------------
+        # Check sleep phrases
         if any(phrase in low for phrase in self._sleep_phrases):
-            # 1) Speak farewell immediately
             self._speak_immediate(self._sleep_farewell)
-
-            # 2) Reset LLM memory so next wake is a fresh conversation
             self._send_llm_command(self._reset_command)
-
-            # 3) Mark pending sleep; final asleep state happens once
-            #    ASR is re-enabled after TTS is done.
             self._pending_sleep = True
             self.get_logger().info(
                 f"Sleep phrase detected in: {text!r}. "
@@ -220,25 +171,13 @@ def __init__(self):
                 "ASR re-enabled after goodbye → Maki going to sleep (LLM already reset)."
             )
 
-"""
-def main(args=None):
-    rclpy.init(args=args)
-    node = ASRCommandRouter()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
-"""
+
 def main(args=None):
     rclpy.init(args=args)
     node = ASRCommandRouter()
     
-    # Use MultiThreadedExecutor so callbacks can run concurrently
     from rclpy.executors import MultiThreadedExecutor
-    executor = MultiThreadedExecutor(num_threads=4)
+    executor = MultiThreadedExecutor(num_threads=10)
     executor.add_node(node)
     
     try:
@@ -249,6 +188,7 @@ def main(args=None):
         executor.shutdown()
         node.destroy_node()
         rclpy.shutdown()
+
 
 if __name__ == "__main__":
     main()
