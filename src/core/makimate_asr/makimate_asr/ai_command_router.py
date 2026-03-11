@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String, Bool
 import time
+from rclpy.wait_for_message import wait_for_message
 
 
 class ASRCommandRouter(Node):
@@ -122,7 +123,7 @@ class ASRCommandRouter(Node):
             
             # Wait for the speaker identification message with timeout
             try:
-                from rclpy import wait_for_message
+                # REMOVED: from rclpy import wait_for_message
                 speaker_msg = wait_for_message(
                     String,
                     self,
