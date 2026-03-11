@@ -217,7 +217,7 @@ def main(args=None):
 """
 def main(args=None):
     rclpy.init(args=args)
-    node = AICommandRouter()
+    node = ASRCommandRouter()
     
     # Use MultiThreadedExecutor so callbacks can run concurrently
     from rclpy.executors import MultiThreadedExecutor
