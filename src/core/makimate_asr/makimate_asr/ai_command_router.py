@@ -123,12 +123,11 @@ class ASRCommandRouter(Node):
             
             # Wait for the speaker identification message with timeout
             try:
-                # REMOVED: from rclpy import wait_for_message
                 speaker_msg = wait_for_message(
                     String,
                     self,
                     '/voice/identified_speaker',
-                    timeout=0.5
+                    time_to_wait=0.5  # Changed from timeout to time_to_wait
                 )
                 speaker = speaker_msg.data
                 self.get_logger().info(f"Got speaker from wait_for_message: {speaker}")
