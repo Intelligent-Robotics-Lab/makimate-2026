@@ -30,9 +30,9 @@ ROBOT_LIMITS = {
     6: {"min": 1097, "max": 1786},
 }
 
-# ACTUAL NEUTRAL POSITIONS
+# ACTUAL NEUTRAL POSITIONS (measured, not calculated!)
 ROBOT_NEUTRAL_POSITIONS = {
-    1: 460,   # neck yaw - actual resting position
+    1: 460,   # neck yaw
     2: 2077,  # neck pitch
     3: 1000,  # eyes pitch
     4: 2028,  # eyes yaw
@@ -43,20 +43,7 @@ ROBOT_NEUTRAL_POSITIONS = {
 
 class MakiDxl6(Node):
     """
-    6-Dynamixel controller for MakiMate head.
-
-    ID mapping:
-      1 - neck_yaw
-      2 - neck_pitch
-      3 - eyes_pitch
-      4 - eyes_yaw
-      5 - lid_left
-      6 - lid_right
-
-    The node takes RELATIVE angles in degrees on topic /maki/joint_goals:
-        [neck_yaw, neck_pitch, eyes_pitch, eyes_yaw, lid_left, lid_right]
-
-    0 degrees means "neutral pose" for that joint (midpoint of hardware min/max ticks).
+    6-Dynamixel controller for MakiMate head with smooth motion interpolation.
     """
 
     def __init__(self):
@@ -68,6 +55,8 @@ class MakiDxl6(Node):
         self.declare_parameter('port_name', '/dev/ttyACM0')
         self.declare_parameter('baud_rate', 57600)
         self.declare_parameter('ids', [1, 2, 3, 4, 5, 6])
+        self.declare_parameter('smoothing_alpha', 0.2)  # Smoothing factor (0.05-0.5)
+        self.declare_parameter('update_rate', 50.0)     # Hz
 
         # ----------------------------------------
         # HARDWARE LIMITS FROM ROBOT_LIMITS
@@ -78,31 +67,25 @@ class MakiDxl6(Node):
         self.min_ticks = {i: raw_limits[i]["min"] for i in raw_limits}
         self.max_ticks = {i: raw_limits[i]["max"] for i in raw_limits}
 
-        # Auto-neutral calculation
-        #self.neutral_ticks = {
-         #   i: int((self.min_ticks[i] + self.max_ticks[i]) / 2)
-          #  for i in raw_limits
-        #}
-
-        #NEW: replaces above auto-neutral calculation
+        # Use MEASURED neutral positions instead of calculated midpoint
         self.neutral_ticks = ROBOT_NEUTRAL_POSITIONS
-        #end
+
         # ----------------------------------------
         # SOFTWARE RELATIVE ANGLE LIMITS (DEG)
         # ----------------------------------------
         self.min_rel_deg = {
-            1: -20.0,  # neck_yaw
+            1: -9.0,   # neck_yaw
             2: -18.0,  # neck_pitch
             3: -12.0,  # eyes_pitch
-            4: -32.0,  # eyes_yaw
+            4: -15.0,  # eyes_yaw
             5: -19.0,  # lid_left
             6: -26.0,  # lid_right
         }
         self.max_rel_deg = {
-            1: 20.0,   # neck_yaw
+            1: 9.0,    # neck_yaw
             2: 18.0,   # neck_pitch
             3: 10.0,   # eyes_pitch
-            4: 32.0,   # eyes_yaw
+            4: 15.0,   # eyes_yaw
             5: 26.0,   # lid_left
             6: 26.0,   # lid_right
         }
@@ -111,6 +94,14 @@ class MakiDxl6(Node):
         port_name = self.get_parameter('port_name').value
         baud_rate = int(self.get_parameter('baud_rate').value)
         self.ids: List[int] = [int(x) for x in self.get_parameter('ids').value]
+        self.smoothing_alpha = float(self.get_parameter('smoothing_alpha').value)
+        update_rate = float(self.get_parameter('update_rate').value)
+
+        # ----------------------------------------
+        # SMOOTHING STATE
+        # ----------------------------------------
+        self.current_positions = [0.0] * len(self.ids)  # Current smooth positions (degrees)
+        self.target_positions = [0.0] * len(self.ids)   # Target positions (degrees)
 
         # ----------------------------------------
         # DYNAMIXEL SDK SETUP
@@ -138,11 +129,6 @@ class MakiDxl6(Node):
 
         # Enable torque on all motors
         for dxl_id in self.ids:
-            #NEW: disable ID1, ID3
-            #if dxl_id in [1, 3, 4]:  # Skip problematic servos
-             #   self.get_logger().warn(f"Skipping torque enable for ID {dxl_id} (disabled)")
-              #  continue
-            # end
             result, error = self.packet_handler.write1ByteTxRx(
                 self.port_handler, dxl_id,
                 self.ADDR_TORQUE_ENABLE, self.TORQUE_ENABLE
@@ -160,7 +146,9 @@ class MakiDxl6(Node):
             else:
                 self.get_logger().info(f"Torque enabled for ID {dxl_id}")
 
-        # ROS Subscriber
+        # ----------------------------------------
+        # ROS SUBSCRIBER & SMOOTH UPDATE TIMER
+        # ----------------------------------------
         self.sub = self.create_subscription(
             Float64MultiArray,
             '/maki/joint_goals',
@@ -168,8 +156,12 @@ class MakiDxl6(Node):
             10,
         )
 
+        # Create smooth update timer
+        self.create_timer(1.0 / update_rate, self._smooth_update)
+
         self.get_logger().info(
-            "MakiDxl6 ready — publish [6] relative degree values to /maki/joint_goals.\n"
+            f"MakiDxl6 ready with smooth motion (alpha={self.smoothing_alpha}, rate={update_rate}Hz)\n"
+            "Publish [6] relative degree values to /maki/joint_goals.\n"
             "0 deg = neutral per-joint midpoint."
         )
 
@@ -181,7 +173,7 @@ class MakiDxl6(Node):
         return int(round(neutral + angle_rel_deg * TICKS_PER_DEG))
 
     # ----------------------------------------
-    # ON JOINT GOALS
+    # ON JOINT GOALS (just updates targets)
     # ----------------------------------------
     def _on_joint_goals(self, msg: Float64MultiArray):
         values = list(msg.data)
@@ -191,17 +183,28 @@ class MakiDxl6(Node):
             )
             return
 
+        # Update target positions with clamping
         for idx, (dxl_id, angle_rel) in enumerate(zip(self.ids, values)):
-            #NEW: disable problematic servos
-           # if dxl_id in [1, 3, 4]:
-               # continue
-            #end
             # Clamp to software limits
             min_d = self.min_rel_deg.get(dxl_id, -30.0)
             max_d = self.max_rel_deg.get(dxl_id, 30.0)
             clamped = max(min_d, min(max_d, angle_rel))
+            
+            self.target_positions[idx] = clamped
 
-            ticks = self._deg_to_ticks_for_id(dxl_id, clamped)
+    # ----------------------------------------
+    # SMOOTH UPDATE LOOP
+    # ----------------------------------------
+    def _smooth_update(self):
+        """Smoothly interpolate toward target positions and send to servos."""
+        for idx, dxl_id in enumerate(self.ids):
+            # Exponential smoothing: gradually move current toward target
+            self.current_positions[idx] += self.smoothing_alpha * (
+                self.target_positions[idx] - self.current_positions[idx]
+            )
+            
+            # Convert to ticks
+            ticks = self._deg_to_ticks_for_id(dxl_id, self.current_positions[idx])
             
             # Clamp to hardware limits (avoid boundary values)
             ticks = max(
@@ -209,6 +212,7 @@ class MakiDxl6(Node):
                 min(self.max_ticks[dxl_id] - 1, ticks)
             )
 
+            # Send to servo
             result, error = self.packet_handler.write4ByteTxRx(
                 self.port_handler, dxl_id,
                 self.ADDR_GOAL_POSITION, ticks
