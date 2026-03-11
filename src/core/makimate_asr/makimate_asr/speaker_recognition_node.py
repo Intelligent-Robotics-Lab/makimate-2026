@@ -73,16 +73,22 @@ class SpeakerRecognitionNode(Node):
         Returns (speaker_name, confidence) or (None, best_score)
         """
         if not self.speaker_profiles:
+            self.get_logger().warn('No speaker profiles loaded!') #NEW: self.get_logger
             return None, 0.0
+
+        self.get_logger().info(f'Comparing against {len(self.speaker_profiles)} profiles') #NEW: self.get_logger
         
         best_match = None
         best_score = 0.0
         
         for name, profile_vector in self.speaker_profiles.items():
             similarity = self.cosine_similarity(speaker_vector, profile_vector)
+            self.get_logger().info(f'  {name}: similarity={similarity:.4f}') #NEW: self.get_logger
             if similarity > best_score:
                 best_score = similarity
                 best_match = name
+
+        self.get_logger().info(f'Best match: {best_match} with score {best_score:.4f} (threshold: {self.threshold})') #NEW: self.get_logger
         
         if best_score >= self.threshold:
             return best_match, best_score
