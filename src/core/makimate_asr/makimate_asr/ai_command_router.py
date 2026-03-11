@@ -154,7 +154,7 @@ class ASRCommandRouter(Node):
 
             # NEW: Wait a moment for speaker recognition to update
             import time
-            time.sleep(0.1)  # 100ms should be enough
+            time.sleep(0.2)  # 200ms delay needed
             
             if self.current_speaker and self.current_speaker != "Unknown":
                 response = f"Hi {self.current_speaker}!"
