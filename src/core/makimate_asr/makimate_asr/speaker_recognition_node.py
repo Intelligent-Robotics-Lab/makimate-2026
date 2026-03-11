@@ -115,7 +115,25 @@ class SpeakerRecognitionNode(Node):
             # Always log for debugging
             self.get_logger().info(f'Recognition: speaker={speaker}, confidence={confidence:.3f}, threshold={self.threshold}')
             
-            # Only publish if speaker changed
+            ##### Only publish if speaker changed
+            # NEW: ALWAYS publish speaker (not just on change)
+            speaker_msg = String()
+            speaker_msg.data = speaker if speaker else "Unknown"
+            self.speaker_pub.publish(speaker_msg)
+            
+            # Publish confidence
+            conf_msg = Float32()
+            conf_msg.data = confidence
+            self.confidence_pub.publish(conf_msg)
+            
+            # Log if speaker changed
+            if speaker != self.current_speaker:
+                if speaker:
+                    self.get_logger().info(f'Speaker: {speaker} (confidence: {confidence:.2f})')
+                else:
+                    self.get_logger().info(f'Unknown speaker (best match: {confidence:.2f})')
+                self.current_speaker = speaker
+            """
             if speaker != self.current_speaker:
                 # Publish identified speaker
                 speaker_msg = String()
@@ -133,6 +151,7 @@ class SpeakerRecognitionNode(Node):
                     self.get_logger().info(f'Unknown speaker (best match: {confidence:.2f})')
                 
                 self.current_speaker = speaker
+            """
         
         except Exception as e:
             self.get_logger().error(f'Error processing embedding: {e}')
