@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String, Bool
+import time
 
 
 class ASRCommandRouter(Node):
@@ -156,29 +157,26 @@ def __init__(self):
                 self._speak_immediate(self._wake_greeting)
             return
             
-        # NEW: Handle "hi" greetings when awake
+        # Handle "hi" greetings when awake
         if any(word in low.split() for word in ['hi', 'hello', 'hey']):
-
-            # NEW: Wait a moment for speaker recognition to update
-
-            self.get_logger().info(f"BEFORE delay: current_speaker = {self.current_speaker}")    #NEW
+            self.get_logger().info("Greeting detected, waiting for speaker recognition...")
             
-            #import time
-            #time.sleep(0.2)  # 200ms delay needed
-    
-            # Wait and actively check for updates
-            speaker = self._get_current_speaker_with_wait(timeout=0.3)
+            # Wait for the speaker identification message with timeout
+            try:
+                from rclpy import wait_for_message
+                speaker_msg = wait_for_message(
+                    String,
+                    self,
+                    '/voice/identified_speaker',
+                    timeout=0.5
+                )
+                speaker = speaker_msg.data
+                self.get_logger().info(f"Got speaker from wait_for_message: {speaker}")
+            except Exception as e:
+                self.get_logger().warn(f"No speaker message received: {e}")
+                speaker = "Unknown"
             
-            self.get_logger().info(f"AFTER delay: current_speaker = {self.current_speaker}")    #NEW
-
-            """
-            if self.current_speaker and self.current_speaker != "Unknown":
-                response = f"Hi {self.current_speaker}!"
-            else:
-                response = f"Hi there!"
-            self._speak_immediate(response)
-            return
-            """
+            # Generate greeting
             if speaker and speaker != "Unknown":
                 response = f"Hi {speaker}!"
             else:
