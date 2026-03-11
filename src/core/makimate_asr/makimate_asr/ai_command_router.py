@@ -157,16 +157,8 @@ class ASRCommandRouter(Node):
 
             self.get_logger().info(f"BEFORE delay: current_speaker = {self.current_speaker}")    #NEW
             
-            #NEW: Spin to process callbacks instead of just sleeping
             import time
-            start_time = time.time()
-            while time.time() - start_time < 0.3:
-                rclpy.spin_once(self, timeout_sec=0.01)
-                
-            """
-            import time
-            time.sleep(0.4)  # 400ms delay needed
-            """
+            time.sleep(0.2)  # 200ms delay needed
             
             self.get_logger().info(f"AFTER delay: current_speaker = {self.current_speaker}")    #NEW
             
@@ -211,7 +203,7 @@ class ASRCommandRouter(Node):
                 "ASR re-enabled after goodbye → Maki going to sleep (LLM already reset)."
             )
 
-
+"""
 def main(args=None):
     rclpy.init(args=args)
     node = ASRCommandRouter()
@@ -222,7 +214,28 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
+"""
+def main(args=None):
+    rclpy.init(args=args)
+    node = AICommandRouter()
+    
+    # Use MultiThreadedExecutor so callbacks can run concurrently
+    from rclpy.executors import MultiThreadedExecutor
+    executor = MultiThreadedExecutor(num_threads=4)
+    executor.add_node(node)
+    
+    try:
+        executor.spin()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        executor.shutdown()
+        node.destroy_node()
+        rclpy.shutdown()
 
+
+if __name__ == '__main__':
+    main()
 
 if __name__ == "__main__":
     main()
