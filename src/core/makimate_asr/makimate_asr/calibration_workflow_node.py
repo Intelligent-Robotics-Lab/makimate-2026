@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 """
-Voice Calibration Workflow Node for MakiMate
-Handles conversational calibration workflow:
-1. User says "calibrate"
+Conversational Voice Calibration Workflow for MakiMate
+1. User says "calibrate" (or "cowboy", "campaign" - common misrecognitions)
 2. Maki: "What's your name?"
 3. User: "John"
-4. Maki: "Okay John, please speak for 10 seconds starting now"
-5. [Records 10 seconds]
-6. Maki: "All done! Your voice is calibrated."
+4. Maki: "Okay John, I'm going to ask you a few questions. Just answer naturally."
+5. Maki asks questions, user answers each one
+6. After 5 samples: "Great! I've learned your voice, John."
 """
 
 import rclpy
@@ -17,14 +16,18 @@ import re
 
 
 class CalibrationWorkflowNode(Node):
-    """Manages the voice calibration conversation flow."""
+    """Manages conversational voice calibration flow with multiple questions."""
 
     def __init__(self):
         super().__init__('calibration_workflow_node')
 
         # State machine
-        self.state = 'IDLE'
+        self.state = 'IDLE'  # IDLE, WAITING_FOR_NAME, ASKING_QUESTIONS
         self.pending_name = None
+        self.current_question_idx = 0
+        self.samples_collected = 0
+        self.target_samples = 5
+        self.recording = False
 
         # Publishers
         self.tts_pub = self.create_publisher(String, '/llm/stream', 10)
@@ -61,7 +64,28 @@ class CalibrationWorkflowNode(Node):
             10
         )
 
-        self.get_logger().info('Calibration Workflow Node ready')
+        self.asr_enable_sub = self.create_subscription(
+            Bool,
+            '/asr/enable',
+            self.asr_enable_callback,
+            10
+        )
+
+        # Questions for natural conversation
+        self.questions = [
+            "What's your favorite color?",
+            "Where did you grow up?",
+            "What do you like to do for fun?",
+            "What's your favorite food?",
+            "Do you have any pets?",
+            "What's your favorite movie?",
+            "What kind of music do you like?",
+            "What's your dream vacation spot?",
+            "What do you do for work or study?",
+            "Tell me about your hobbies.",
+        ]
+
+        self.get_logger().info('Calibration Workflow Node ready (conversational mode)')
         self.get_logger().info('Say "calibrate" to begin voice enrollment')
 
     def speak(self, text):
@@ -81,7 +105,8 @@ class CalibrationWorkflowNode(Node):
         self.get_logger().debug(f'ASR [{self.state}]: "{text}"')
 
         if self.state == 'IDLE':
-            if 'calibrate' in text or 'calibration' in text:
+            # Lenient matching for "calibrate" - common misrecognitions in noisy environments
+            if any(word in text for word in ['calibrate', 'calibration', 'cowboy', 'campaign', 'calendar']):
                 self.get_logger().info('Calibration requested!')
                 self.state = 'WAITING_FOR_NAME'
                 self.speak("What's your name?")
@@ -93,19 +118,25 @@ class CalibrationWorkflowNode(Node):
                 self.pending_name = name
                 self.get_logger().info(f'Name captured: {name}')
 
-                self.speak(f"Okay {name}, please speak for 10 seconds starting now.")
-
-                self.state = 'CALIBRATING'
-
+                # Start calibration session
                 cal_msg = String()
                 cal_msg.data = name
                 self.calibration_start_pub.publish(cal_msg)
 
+                self.state = 'ASKING_QUESTIONS'
+                self.current_question_idx = 0
+                self.samples_collected = 0
+                self.recording = False
+
+                self.speak(f"Okay {name}, I'm going to ask you a few questions. Just answer naturally.")
+
             else:
                 self.speak("I didn't catch that. What's your name?")
 
-        elif self.state == 'CALIBRATING':
-            pass
+        elif self.state == 'ASKING_QUESTIONS':
+            # User is answering - logged for debugging
+            if self.recording:
+                self.get_logger().info(f"User answered: {text}")
 
     def extract_name(self, text):
         """Extract a name from speech."""
@@ -137,37 +168,59 @@ class CalibrationWorkflowNode(Node):
         return None
 
     def calibration_ready_callback(self, msg):
-        """Start recording once calibration node is ready."""
-        if not msg.data or self.state != 'CALIBRATING':
+        """Calibration node signals it's ready - ask first question."""
+        if not msg.data or self.state != 'ASKING_QUESTIONS':
             return
 
-        self.get_logger().info('Calibration ready — starting recording')
+        # Ask next question if we haven't collected enough samples
+        if self.samples_collected < self.target_samples and self.current_question_idx < len(self.questions):
+            question = self.questions[self.current_question_idx]
+            self.speak(question)
+            self.current_question_idx += 1
+
+    def asr_enable_callback(self, msg):
+        """When ASR re-enables after TTS, start recording the answer."""
+        if not msg.data or self.state != 'ASKING_QUESTIONS':
+            return
+
+        # TTS finished asking question, now record the user's answer
+        self.get_logger().info("ASR enabled - starting to record answer")
+        self.recording = True
 
         start_msg = Bool()
         start_msg.data = True
         self.record_segment_pub.publish(start_msg)
 
-        self.get_logger().info('🎤 Recording for 10 seconds...')
+    def calibration_progress_callback(self, msg):
+        """Track progress as samples are collected."""
+        if self.state != 'ASKING_QUESTIONS':
+            return
 
-        # Timer to stop recording
-        self.record_timer = self.create_timer(10.0, self.stop_recording)
+        progress = msg.data
+        new_samples = int(progress * self.target_samples)
 
-    def stop_recording(self):
-        """Stop recording and finish calibration."""
-        self.record_timer.cancel()
+        if new_samples > self.samples_collected:
+            self.samples_collected = new_samples
+            self.get_logger().info(f'Progress: {int(progress * 100)}% ({self.samples_collected}/{self.target_samples} samples)')
 
-        stop_msg = Bool()
-        stop_msg.data = False
-        self.record_segment_pub.publish(stop_msg)
+            # Stop recording this segment
+            self.recording = False
+            stop_msg = Bool()
+            stop_msg.data = False
+            self.record_segment_pub.publish(stop_msg)
 
-        self.get_logger().info('⏹️ Recording finished')
-
-        finish_msg = Bool()
-        finish_msg.data = True
-        self.finish_calibration_pub.publish(finish_msg)
+            # Check if done
+            if self.samples_collected >= self.target_samples:
+                self.get_logger().info('Enough samples collected, finishing calibration')
+                finish_msg = Bool()
+                finish_msg.data = True
+                self.finish_calibration_pub.publish(finish_msg)
+            else:
+                # Ask next question (will happen when calibration_ready fires)
+                self.get_logger().debug(f'Waiting to ask question {self.current_question_idx + 1}')
 
     def calibration_status_callback(self, msg):
-        """Handle calibration status updates."""
+        """Handle calibration completion status."""
         status = msg.data
 
         self.get_logger().info(f'Calibration status: {status}')
@@ -176,12 +229,16 @@ class CalibrationWorkflowNode(Node):
             parts = status.split(':')
             if len(parts) >= 2:
                 name = parts[1]
-                self.speak(f"All done! Your voice is calibrated, {name}.")
+                self.speak(f"Great! I've learned your voice, {name}.")
             else:
-                self.speak("All done! Your voice is calibrated.")
+                self.speak("Great! I've learned your voice.")
 
+            # Reset state
             self.state = 'IDLE'
             self.pending_name = None
+            self.current_question_idx = 0
+            self.samples_collected = 0
+            self.recording = False
 
         elif status.startswith('error:'):
             error_type = status.split(':')[1] if ':' in status else 'unknown'
@@ -195,18 +252,12 @@ class CalibrationWorkflowNode(Node):
             else:
                 self.speak("Sorry, something went wrong. Please try again later.")
 
+            # Reset state
             self.state = 'IDLE'
             self.pending_name = None
-
-    def calibration_progress_callback(self, msg):
-        """Handle calibration progress updates."""
-        progress = msg.data
-
-        if self.state == 'CALIBRATING':
-            if 40 <= progress < 45:
-                self.get_logger().info('Calibration 40% complete')
-            elif 80 <= progress < 85:
-                self.get_logger().info('Calibration 80% complete - almost done!')
+            self.current_question_idx = 0
+            self.samples_collected = 0
+            self.recording = False
 
 
 def main(args=None):
