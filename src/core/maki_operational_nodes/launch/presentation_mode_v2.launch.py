@@ -56,7 +56,7 @@ def generate_launch_description():
             + "ros2 run makimate_asr speaker_recognition_node "
               "--ros-args "
               "-p profile_file:=/home/emanuel/speaker_profiles.pkl "
-              "-p threshold:=0.5"
+              "-p threshold:=0.3"
         ],
         output="screen",
     )
