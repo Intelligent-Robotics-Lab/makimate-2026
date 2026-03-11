@@ -123,14 +123,19 @@ class ASRCommandRouter(Node):
             
             # Wait for the speaker identification message with timeout
             try:
-                speaker_msg = wait_for_message(
+                result = wait_for_message(
                     String,
                     self,
                     '/voice/identified_speaker',
-                    time_to_wait=0.5  # Changed from timeout to time_to_wait
+                    time_to_wait=0.5
                 )
-                speaker = speaker_msg.data
-                self.get_logger().info(f"Got speaker from wait_for_message: {speaker}")
+                # wait_for_message returns a tuple (msg, info)
+                if result and len(result) > 0:
+                    speaker_msg = result[0]  # Get the message from tuple
+                    speaker = speaker_msg.data
+                    self.get_logger().info(f"Got speaker from wait_for_message: {speaker}")
+                else:
+                    speaker = "Unknown"
             except Exception as e:
                 self.get_logger().warn(f"No speaker message received: {e}")
                 speaker = "Unknown"
@@ -143,17 +148,6 @@ class ASRCommandRouter(Node):
             
             self.get_logger().info(f"Greeting response: {response}")
             self._speak_immediate(response)
-            return
-            
-        # Check sleep phrases
-        if any(phrase in low for phrase in self._sleep_phrases):
-            self._speak_immediate(self._sleep_farewell)
-            self._send_llm_command(self._reset_command)
-            self._pending_sleep = True
-            self.get_logger().info(
-                f"Sleep phrase detected in: {text!r}. "
-                "Sent /reset to LLM and waiting for ASR re-enable before sleeping."
-            )
             return
 
         # Normal conversation: forward to LLM
