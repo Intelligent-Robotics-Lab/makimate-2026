@@ -119,9 +119,11 @@ class ASRCommandRouter(Node):
             
         # Handle "hi" greetings when awake
         if any(word in low.split() for word in ['hi', 'hello', 'hey']):
-            # Simple approach: just wait a bit for the callback to execute
+            # Give the speaker callback time to execute by spinning the executor
             import time
-            time.sleep(0.6)  # Give callback time to execute (was 0.5, increase to 0.6)
+            start = time.time()
+            while time.time() - start < 0.1:  # 100ms should be plenty
+                rclpy.spin_once(self, timeout_sec=0.01)  # Let callbacks execute
             
             # Use the callback-updated value
             speaker = self.current_speaker
