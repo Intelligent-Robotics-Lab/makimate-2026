@@ -158,6 +158,7 @@ class ASRCommandRouter(Node):
             self.get_logger().info(f"BEFORE delay: current_speaker = {self.current_speaker}")    #NEW
             
             #NEW: Spin to process callbacks instead of just sleeping
+            import time
             start_time = time.time()
             while time.time() - start_time < 0.3:
                 rclpy.spin_once(self, timeout_sec=0.01)
