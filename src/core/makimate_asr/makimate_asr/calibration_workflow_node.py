@@ -151,33 +151,38 @@ class CalibrationWorkflowNode(Node):
         record_msg = Bool()
         record_msg.data = True
         self.record_pub.publish(record_msg)
-
+    
     def _on_progress(self, msg: Float32):
         """Track calibration progress."""
         if self.state != "ASKING_QUESTIONS":
             return
-
-        progress = int(msg.data * 100)
-        new_samples = int(msg.data * self.target_samples)
-
+    
+        progress = msg.data
+        new_samples = int(progress * self.target_samples)
+    
         if new_samples > self.samples_collected:
             self.samples_collected = new_samples
-            self.get_logger().info(f"Progress: {progress}% ({self.samples_collected}/{self.target_samples} samples)")
-
+            self.get_logger().info(f"Progress: {int(progress * 100)}% ({self.samples_collected}/{self.target_samples} samples)")
+    
             # Stop recording this segment
             self.recording = False
             record_msg = Bool()
             record_msg.data = False
             self.record_pub.publish(record_msg)
-
+    
             # Check if done
             if self.samples_collected >= self.target_samples:
                 self.get_logger().info("Enough samples collected, finishing calibration")
                 finish_msg = Bool()
                 finish_msg.data = True
                 self.finish_pub.publish(finish_msg)
-                
-                # Don't speak here - wait for calibration_status callback
+            else:
+                # Not done yet - ask next question
+                if self.current_question_idx < len(self.questions):
+                    question = self.questions[self.current_question_idx]
+                    self._speak(question)
+                    self.get_logger().info(f"Maki: \"{question}\"")
+                    self.current_question_idx += 1
 
     def _on_status(self, msg: String):
         """Handle calibration completion status."""
