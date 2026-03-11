@@ -123,19 +123,19 @@ class ASRCommandRouter(Node):
             
             # Wait for the speaker identification message with timeout
             try:
-                result = wait_for_message(
+                speaker_msg, success = wait_for_message(
                     String,
                     self,
                     '/voice/identified_speaker',
                     time_to_wait=0.5
                 )
-                # wait_for_message returns a tuple (msg, info)
-                if result and len(result) > 0:
-                    speaker_msg = result[0]  # Get the message from tuple
+                
+                if success and speaker_msg:
                     speaker = speaker_msg.data
                     self.get_logger().info(f"Got speaker from wait_for_message: {speaker}")
                 else:
                     speaker = "Unknown"
+                    
             except Exception as e:
                 self.get_logger().warn(f"No speaker message received: {e}")
                 speaker = "Unknown"
