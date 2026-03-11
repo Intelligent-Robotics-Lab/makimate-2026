@@ -350,23 +350,6 @@ class NaturalTTS(Node):
                 "piper_cli backend requested but no 'piper_model' set."
             )
             return
-
-        #NEW
-        # KILL ANY EXISTING PIPER PROCESS FIRST
-        if self.piper_process:
-            try:
-                self.piper_process.stdin.close()
-                self.piper_process.terminate()
-                self.piper_process.wait(timeout=2)
-            except Exception:
-                self.piper_process.kill()
-            self.piper_process = None
-        
-        # Also kill any orphaned paplay processes
-        import os
-        os.system("killall -q paplay 2>/dev/null || true")
-        # END NEW
-
         
         # Start persistent piper process
         piper_cmd = [
