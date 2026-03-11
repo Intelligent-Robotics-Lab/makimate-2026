@@ -127,7 +127,8 @@ class ASRCommandRouter(Node):
     def _on_speaker_identified(self, msg):
         """Track who is currently speaking."""
         self.current_speaker = msg.data
-        self.get_logger().debug(f'Current speaker: {self.current_speaker}')
+        #self.get_logger().debug(f'Current speaker: {self.current_speaker}')
+        self.get_logger().info(f'Current speaker: {self.current_speaker}')    #NEW: changed from .debug to .info
     
     def _on_asr(self, msg: String):
         text = msg.data.strip()
