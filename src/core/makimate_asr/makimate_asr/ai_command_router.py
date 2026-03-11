@@ -68,8 +68,11 @@ class ASRCommandRouter(Node):
         self._awake_pub = self.create_publisher(Bool, awake_topic, 10)
         self._tts_pub = self.create_publisher(String, tts_topic, 10)
 
-        # NEW: Track current speaker
+        # NEW-ish: Track current speaker
         self.current_speaker = "Unknown"
+
+        # NEW: Track latest speaker message directly
+        self.latest_speaker_msg = None
 
         # ---- Subscribers ----
         self._asr_sub = self.create_subscription(String, asr_topic, self._on_asr, 10)
@@ -77,8 +80,17 @@ class ASRCommandRouter(Node):
             Bool, asr_enable_topic, self._on_asr_enable, 10
         )
 
+        """
         # NEW: Subscribe to speaker identification
         self.create_subscription(
+            String,
+            '/voice/identified_speaker',
+            self._on_speaker_identified,
+            10
+        )
+        """
+        # Change speaker subscription to store raw message
+        self.speaker_sub = self.create_subscription(
             String,
             '/voice/identified_speaker',
             self._on_speaker_identified,
@@ -126,9 +138,26 @@ class ASRCommandRouter(Node):
     # NEW: Speaker ID
     def _on_speaker_identified(self, msg):
         """Track who is currently speaking."""
+        self.latest_speaker_msg = msg  # Store the entire message
         self.current_speaker = msg.data
+        self.get_logger().info(f'Speaker updated to: {self.current_speaker}')
         #self.get_logger().debug(f'Current speaker: {self.current_speaker}')
-        self.get_logger().info(f'Current speaker: {self.current_speaker}')    #NEW: changed from .debug to .info
+        #self.get_logger().info(f'Current speaker: {self.current_speaker}')    #NEW: changed from .debug to .info
+
+    def _get_current_speaker_with_wait(self, timeout=0.3):
+        """Wait and check for speaker updates."""
+        import time
+        start = time.time()
+        initial_speaker = self.current_speaker
+        
+        # Wait for speaker to potentially change
+        while time.time() - start < timeout:
+            time.sleep(0.05)
+            # Check if speaker changed during wait
+            if self.current_speaker != initial_speaker:
+                return self.current_speaker
+        
+        return self.current_speaker
     
     def _on_asr(self, msg: String):
         text = msg.data.strip()
@@ -157,15 +186,28 @@ class ASRCommandRouter(Node):
 
             self.get_logger().info(f"BEFORE delay: current_speaker = {self.current_speaker}")    #NEW
             
-            import time
-            time.sleep(0.2)  # 200ms delay needed
+            #import time
+            #time.sleep(0.2)  # 200ms delay needed
+    
+            # Wait and actively check for updates
+            speaker = self._get_current_speaker_with_wait(timeout=0.3)
             
             self.get_logger().info(f"AFTER delay: current_speaker = {self.current_speaker}")    #NEW
-            
+
+            """
             if self.current_speaker and self.current_speaker != "Unknown":
                 response = f"Hi {self.current_speaker}!"
             else:
                 response = f"Hi there!"
+            self._speak_immediate(response)
+            return
+            """
+            if speaker and speaker != "Unknown":
+                response = f"Hi {speaker}!"
+            else:
+                response = f"Hi there!"
+            
+            self.get_logger().info(f"Greeting response: {response}")
             self._speak_immediate(response)
             return
             
