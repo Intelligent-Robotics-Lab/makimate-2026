@@ -123,7 +123,7 @@ class ASRCommandRouter(Node):
             
             # Wait for the speaker identification message with timeout
             try:
-                speaker_msg, success = wait_for_message(
+                success, speaker_msg = wait_for_message(
                     String,
                     self,
                     '/voice/identified_speaker',
