@@ -130,14 +130,11 @@ class ASRCommandRouter(Node):
                     time_to_wait=0.5
                 )
                 
-                self.get_logger().info(f"wait_for_message returned: success={success}, msg={speaker_msg}")  # DEBUG
-                
                 if success and speaker_msg:
                     speaker = speaker_msg.data
                     self.get_logger().info(f"Got speaker from wait_for_message: {speaker}")
                 else:
                     speaker = "Unknown"
-                    self.get_logger().warn(f"wait_for_message failed: success={success}")
                     
             except Exception as e:
                 self.get_logger().warn(f"No speaker message received: {e}")
