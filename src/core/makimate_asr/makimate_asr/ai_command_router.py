@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, DurabilityPolicy
 from std_msgs.msg import String, Bool
 import time
 from rclpy.wait_for_message import wait_for_message
@@ -43,8 +44,9 @@ class ASRCommandRouter(Node):
         self._reset_command = "/reset"
 
         # ---- Publishers ----
+        _latched_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self._llm_req_pub = self.create_publisher(String, llm_request_topic, 10)
-        self._awake_pub = self.create_publisher(Bool, awake_topic, 10)
+        self._awake_pub = self.create_publisher(Bool, awake_topic, _latched_qos)
         self._tts_pub = self.create_publisher(String, tts_topic, 10)
 
         # Speaker tracking
