@@ -11,6 +11,7 @@
   <depend>sensor_msgs</depend>
   <depend>cv_bridge</depend>
   <depend>std_msgs</depend>
+  <depend>makimate_interfaces</depend>
 
 
   <test_depend>ament_copyright</test_depend>
