@@ -1,0 +1,5 @@
+# Save the facial embedding of the highest-confidence face under this name.
+string name
+---
+bool success
+string message
