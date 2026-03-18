@@ -24,9 +24,7 @@ def generate_launch_description():
               "-p publish_llm:=false "
               "-p asr_topic:=/asr/text "
               "-p llm_request_topic:=/llm/request "
-              "-p enable_topic:=/asr/enable "
-              "-p channels:=6 "
-              "-p channel_index:=4"
+              "-p enable_topic:=/asr/enable"
         ],
         output="screen",
     )

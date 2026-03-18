@@ -22,6 +22,7 @@ Parameters:
 import math
 import importlib.util
 
+import usb.core
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Int32, Bool, Float32
@@ -56,16 +57,21 @@ class ReSpeakerDSP(Node):
         # Load Tuning class dynamically from usb_4_mic_array/tuning.py
         # ------------------------------------------------------------------ #
         try:
+            # Find ReSpeaker USB device (Seeed vendor 0x2886, product 0x0018)
+            usb_dev = usb.core.find(idVendor=0x2886, idProduct=0x0018)
+            if usb_dev is None:
+                raise RuntimeError(
+                    'ReSpeaker not found. Check USB connection and udev rules.'
+                )
             spec   = importlib.util.spec_from_file_location('tuning', tuning_path)
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
-            self._tuning = module.Tuning()
+            self._tuning = module.Tuning(usb_dev)
             self.get_logger().info(f'ReSpeakerDSP: loaded tuning module from {tuning_path}')
         except Exception as e:
             self.get_logger().error(f'Failed to load tuning module: {e}')
             self.get_logger().error(
-                'Make sure usb_4_mic_array is cloned and udev rules are installed '
-                '(see scripts/install_respeaker_udev.sh).'
+                'Make sure usb_4_mic_array is cloned and udev rules are installed.'
             )
             raise
 
