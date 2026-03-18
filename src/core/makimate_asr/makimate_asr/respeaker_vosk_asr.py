@@ -34,6 +34,13 @@ class ReSpeakerVoskASR(Node):
         self.declare_parameter('publish_text', True)  # NEW: Allow disabling text output
         self.publish_text = self.get_parameter('publish_text').value
 
+        # Multi-channel support: set channels=6 and channel_index=4 to use
+        # the ReSpeaker's processed beamformed output instead of raw mic data.
+        self.declare_parameter('channels', 1)
+        self.declare_parameter('channel_index', 0)
+        self.channels = int(self.get_parameter('channels').value)
+        self.channel_index = int(self.get_parameter('channel_index').value)
+
 
         # -------------------------
         # Read parameters
@@ -123,7 +130,11 @@ class ReSpeakerVoskASR(Node):
     def _audio_callback(self, indata, frames, time, status):
         if status:
             self.get_logger().warn(f"Audio status: {status}")
-        data = (indata * 32767).astype('int16').tobytes()
+        if self.channels > 1:
+            channel_data = indata[:, self.channel_index]
+        else:
+            channel_data = indata[:, 0]
+        data = (channel_data * 32767).astype('int16').tobytes()
         self.audio_q.put(data)
 
     def _on_enable(self, msg: Bool):
@@ -160,7 +171,7 @@ class ReSpeakerVoskASR(Node):
 
             self.stream = sd.InputStream(
                 samplerate=self.sample_rate,
-                channels=1,
+                channels=self.channels,
                 dtype='float32',
                 device=device_arg,
                 callback=self._audio_callback,

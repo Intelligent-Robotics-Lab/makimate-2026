@@ -33,6 +33,7 @@ setup(
             'realtime_display_logger = makimate_asr.realtime_display_logger:main',
             #NEW
             'respeaker_whisper_asr = makimate_asr.respeaker_whisper_asr:main',
+            'respeaker_dsp_node = makimate_asr.respeaker_dsp_node:main',
         ],
     }
 

@@ -24,7 +24,9 @@ def generate_launch_description():
               "-p publish_llm:=false "
               "-p asr_topic:=/asr/text "
               "-p llm_request_topic:=/llm/request "
-              "-p enable_topic:=/asr/enable"
+              "-p enable_topic:=/asr/enable "
+              "-p channels:=6 "
+              "-p channel_index:=4"
         ],
         output="screen",
     )
@@ -188,7 +190,27 @@ def generate_launch_description():
         output="screen",
     )
 
-    # 13) Camera driver
+    # 13) ReSpeaker DSP — configures noise suppression, echo cancellation,
+    #     beamforming, VAD threshold and publishes DOA, VAD, proximity topics
+    respeaker_dsp_node = ExecuteProcess(
+        cmd=[
+            "bash",
+            "-lc",
+            shell_prefix
+            + "ros2 run makimate_asr respeaker_dsp_node "
+              "--ros-args "
+              "-p tuning_script_path:=/home/emanuel/usb_4_mic_array/tuning.py "
+              "-p poll_rate_hz:=10.0 "
+              "-p vad_threshold:=3.5 "
+              "-p enable_ns:=true "
+              "-p enable_echo:=true "
+              "-p enable_agc:=true "
+              "-p hpf_cutoff:=2"
+        ],
+        output="screen",
+    )
+
+    # 14) Camera driver
     camera_node = ExecuteProcess(
         cmd=[
             "bash",
@@ -206,7 +228,7 @@ def generate_launch_description():
         output="screen",
     )
 
-    # 14) Face tracker
+    # 15) Face tracker
     face_tracker_node = ExecuteProcess(
         cmd=[
             "bash",
@@ -217,7 +239,7 @@ def generate_launch_description():
         output="screen",
     )
 
-    # 15) Face→Maki head control
+    # 16) Face→Maki head control
     face_to_maki_node = ExecuteProcess(
         cmd=[
             "bash",
@@ -243,6 +265,7 @@ def generate_launch_description():
         maki_behavior_awake, #
         maki_dxl_node, #
         maki_behavior_node, # 
+        respeaker_dsp_node,
         camera_node, #
         face_tracker_node, #
         face_to_maki_node, #
