@@ -161,18 +161,18 @@ class MakiBehavior(Node):
         arr input convention: [neck_yaw, neck_pitch, eye_pitch, eye_yaw, lid_left, lid_right]
 
         Physical motor mapping (confirmed by testing):
-          ID 1 = eye_yaw   (arr[3])
+          ID 1 = eye_pitch  (arr[2])
           ID 2 = neck_pitch (arr[1])
-          ID 3 = eye_pitch  (arr[2])
-          ID 4 = neck_yaw   (arr[0])  ← swapped vs naive index order
+          ID 3 = neck_yaw   (arr[0])  ← data[2] turns the head
+          ID 4 = eye_yaw    (arr[3])
           ID 5 = lid_left   (arr[4])
           ID 6 = lid_right  (arr[5])
         """
         limits_deg = [
-            (-18.0, 18.0),   # neck_yaw  → ID 4 (~±19° hardware range)
+            (-18.0, 18.0),   # neck_yaw  → ID 3 (hardware ±41°, using ±18°)
             (-20.0, 20.0),   # neck_pitch → ID 2
-            (-15.0, 15.0),   # eye_pitch  → ID 3
-            (-15.0, 15.0),   # eye_yaw    → ID 1
+            (-12.0, 12.0),   # eye_pitch  → ID 1
+            (-15.0, 15.0),   # eye_yaw    → ID 4
             (-20.0, 26.0),   # lid_left   → ID 5
             (-26.0, 20.0),   # lid_right  → ID 6
         ]
@@ -183,10 +183,10 @@ class MakiBehavior(Node):
         ]
 
         # Remap to physical motor order: [ID1, ID2, ID3, ID4, ID5, ID6]
-        #   topic[0]=ID1=eye_yaw, topic[1]=ID2=neck_pitch, topic[2]=ID3=eye_pitch,
-        #   topic[3]=ID4=neck_yaw, topic[4]=ID5=lid_left,  topic[5]=ID6=lid_right
+        #   topic[0]=ID1=eye_pitch, topic[1]=ID2=neck_pitch, topic[2]=ID3=neck_yaw,
+        #   topic[3]=ID4=eye_yaw,   topic[4]=ID5=lid_left,  topic[5]=ID6=lid_right
         neck_yaw, neck_pitch, eye_pitch, eye_yaw, lid_l, lid_r = arr_clamped
-        remapped = [eye_yaw, neck_pitch, eye_pitch, neck_yaw, lid_l, lid_r]
+        remapped = [eye_pitch, neck_pitch, neck_yaw, eye_yaw, lid_l, lid_r]
 
         msg = Float64MultiArray()
         msg.data = remapped
