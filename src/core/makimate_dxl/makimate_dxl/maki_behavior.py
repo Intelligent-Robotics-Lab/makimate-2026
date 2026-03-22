@@ -67,10 +67,9 @@ class MakiBehavior(Node):
         self.face_present = False
         self.no_face_counter = 0
 
-        # Bigger threshold → longer before going into search.
         # If /maki/largest_face_bbox is ~10–15 Hz,
-        # 90 counts ≈ 6–9 seconds with no face.
-        self.no_face_threshold = 90
+        # 30 counts ≈ 2–3 seconds with no face before searching.
+        self.no_face_threshold = 30
 
         self.search_mode = False
 
@@ -327,28 +326,27 @@ class MakiBehavior(Node):
             doa = self._last_doa
 
             if doa is not None:
-                # Convert DOA (0–359°) to a yaw target within ±17°.
+                # Convert DOA (0–359°) to a yaw target within ±10°.
                 # ReSpeaker convention: 0=front, 90=right, 270=left.
                 if doa <= 90:
-                    target_yaw = doa * (17.0 / 90.0)
+                    target_yaw = doa * (10.0 / 90.0)
                 elif doa >= 270:
-                    target_yaw = (doa - 360) * (17.0 / 90.0)
+                    target_yaw = (doa - 360) * (10.0 / 90.0)
                 else:
-                    # Speaker mostly behind — alternate sides
                     side = 1 if state["last_side"] <= 0 else -1
                     state["last_side"] = side
-                    target_yaw = side * random.uniform(10.0, 17.0)
-                target_yaw += random.uniform(-3.0, 3.0)
-                state["target_yaw"] = max(-17.0, min(17.0, target_yaw))
+                    target_yaw = side * random.uniform(5.0, 10.0)
+                target_yaw += random.uniform(-2.0, 2.0)
+                state["target_yaw"] = max(-10.0, min(10.0, target_yaw))
             else:
-                # No DOA: alternate left/right symmetrically (neck_yaw ID4 has ±18°)
+                # No DOA: alternate left/right with modest range
                 side = 1 if state["last_side"] <= 0 else -1
                 state["last_side"] = side
-                state["target_yaw"] = side * random.uniform(10.0, 17.0)
+                state["target_yaw"] = side * random.uniform(5.0, 10.0)
 
-            state["target_pitch"] = random.uniform(-6.0, 6.0)
+            state["target_pitch"] = random.uniform(-4.0, 4.0)
             state["hold_ticks"] = 0
-            state["hold_max"] = random.randint(20, 50)  # 1–2.5 s hold (DXL needs time to arrive)
+            state["hold_max"] = random.randint(60, 100)  # 3–5 s hold — face tracker needs stillness
 
         choose_new_target()
 
