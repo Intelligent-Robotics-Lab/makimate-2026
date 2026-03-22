@@ -74,20 +74,20 @@ class MakiDxl6(Node):
         # SOFTWARE RELATIVE ANGLE LIMITS (DEG)
         # ----------------------------------------
         self.min_rel_deg = {
-            1: -22.0,  # neck_yaw — hardware allows 38° left, using 22° safely
-            2: -18.0,  # neck_pitch
-            3: -12.0,  # eyes_pitch
-            4: -15.0,  # eyes_yaw
-            5: -19.0,  # lid_left
-            6: -26.0,  # lid_right
+            1: -15.0,  # eye_yaw   (ID 1, small range is fine for eyes)
+            2: -18.0,  # neck_pitch (ID 2)
+            3: -12.0,  # eye_pitch  (ID 3)
+            4: -18.0,  # neck_yaw  (ID 4, hardware ~±19° symmetric)
+            5: -19.0,  # lid_left  (ID 5)
+            6: -26.0,  # lid_right (ID 6)
         }
         self.max_rel_deg = {
-            1: 9.0,    # neck_yaw — hardware-limited to ~9.7° right
-            2: 18.0,   # neck_pitch
-            3: 10.0,   # eyes_pitch
-            4: 15.0,   # eyes_yaw
-            5: 26.0,   # lid_left
-            6: 26.0,   # lid_right
+            1: 15.0,   # eye_yaw   (ID 1)
+            2: 18.0,   # neck_pitch (ID 2)
+            3: 10.0,   # eye_pitch  (ID 3)
+            4: 18.0,   # neck_yaw  (ID 4)
+            5: 26.0,   # lid_left  (ID 5)
+            6: 26.0,   # lid_right (ID 6)
         }
 
         # Read basic params

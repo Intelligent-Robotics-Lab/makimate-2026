@@ -158,26 +158,38 @@ class MakiBehavior(Node):
     def send(self, arr):
         """
         Sends joint goals in DEGREES.
-        arr: [yaw, pitch, eye_pitch, eye_yaw, lid_left, lid_right] in degrees
+        arr input convention: [neck_yaw, neck_pitch, eye_pitch, eye_yaw, lid_left, lid_right]
+
+        Physical motor mapping (confirmed by testing):
+          ID 1 = eye_yaw   (arr[3])
+          ID 2 = neck_pitch (arr[1])
+          ID 3 = eye_pitch  (arr[2])
+          ID 4 = neck_yaw   (arr[0])  ← swapped vs naive index order
+          ID 5 = lid_left   (arr[4])
+          ID 6 = lid_right  (arr[5])
         """
-        # Just clamp to reasonable degree limits and send
         limits_deg = [
-            (-23.0, 23.0),   # yaw (ID 1); reduced from (-40.0, 40.0),
-            (-20.0, 20.0),   # pitch (ID 2)
-            (-15.0, 15.0),   # eye_pitch (ID 3)
-            (-20.0, 20.0),   # eye_yaw (ID 4)
-            (-20.0, 26.0),   # lid_left (ID 5)
-            (-26.0, 20.0),   # lid_right (ID 6)
+            (-18.0, 18.0),   # neck_yaw  → ID 4 (~±19° hardware range)
+            (-20.0, 20.0),   # neck_pitch → ID 2
+            (-15.0, 15.0),   # eye_pitch  → ID 3
+            (-15.0, 15.0),   # eye_yaw    → ID 1
+            (-20.0, 26.0),   # lid_left   → ID 5
+            (-26.0, 20.0),   # lid_right  → ID 6
         ]
-        
-        # Clamp each value
+
         arr_clamped = [
             max(lim[0], min(lim[1], val))
             for val, lim in zip(arr, limits_deg)
         ]
-        
+
+        # Remap to physical motor order: [ID1, ID2, ID3, ID4, ID5, ID6]
+        #   topic[0]=ID1=eye_yaw, topic[1]=ID2=neck_pitch, topic[2]=ID3=eye_pitch,
+        #   topic[3]=ID4=neck_yaw, topic[4]=ID5=lid_left,  topic[5]=ID6=lid_right
+        neck_yaw, neck_pitch, eye_pitch, eye_yaw, lid_l, lid_r = arr_clamped
+        remapped = [eye_yaw, neck_pitch, eye_pitch, neck_yaw, lid_l, lid_r]
+
         msg = Float64MultiArray()
-        msg.data = arr_clamped  # Send degrees, not pulses!
+        msg.data = remapped
         self.pub.publish(msg)
 
     # ------------------------------------------
@@ -287,9 +299,7 @@ class MakiBehavior(Node):
     def start_find_me(self):
         def step_timer():
             self.phase += 0.05
-            # Asymmetric sweep: bias toward the wider left side (-20°) vs right (+8°)
-            raw = math.sin(self.phase)
-            yaw = raw * 8.0 if raw >= 0 else raw * 20.0
+            yaw = 17.0 * math.sin(self.phase)
             self.send_with_blink(yaw, 0.0, 0.0, 0.0, 20.0, -20.0)
         t = self.create_timer(0.05, step_timer)
         self._timers.append(t)
@@ -317,27 +327,24 @@ class MakiBehavior(Node):
             doa = self._last_doa
 
             if doa is not None:
-                # Convert DOA (0–359°) to a yaw target.
+                # Convert DOA (0–359°) to a yaw target within ±17°.
                 # ReSpeaker convention: 0=front, 90=right, 270=left.
                 if doa <= 90:
-                    target_yaw = doa * (8.0 / 90.0)      # right, max ~8°
+                    target_yaw = doa * (17.0 / 90.0)
                 elif doa >= 270:
-                    target_yaw = (doa - 360) * (20.0 / 90.0)  # left, max ~20°
+                    target_yaw = (doa - 360) * (17.0 / 90.0)
                 else:
-                    # Speaker is mostly behind — alternate sides
+                    # Speaker mostly behind — alternate sides
                     side = 1 if state["last_side"] <= 0 else -1
                     state["last_side"] = side
-                    target_yaw = side * (8.0 if side > 0 else 18.0)
+                    target_yaw = side * random.uniform(10.0, 17.0)
                 target_yaw += random.uniform(-3.0, 3.0)
-                state["target_yaw"] = max(-21.0, min(8.0, target_yaw))
+                state["target_yaw"] = max(-17.0, min(17.0, target_yaw))
             else:
-                # No DOA: alternate left/right with the full available range
+                # No DOA: alternate left/right symmetrically (neck_yaw ID4 has ±18°)
                 side = 1 if state["last_side"] <= 0 else -1
                 state["last_side"] = side
-                if side > 0:
-                    state["target_yaw"] = random.uniform(5.0, 8.0)    # right (hardware limited)
-                else:
-                    state["target_yaw"] = random.uniform(-20.0, -10.0)  # left (wide range)
+                state["target_yaw"] = side * random.uniform(10.0, 17.0)
 
             state["target_pitch"] = random.uniform(-6.0, 6.0)
             state["hold_ticks"] = 0
