@@ -55,7 +55,7 @@ class MakiDxl6(Node):
         self.declare_parameter('port_name', '/dev/ttyACM0')
         self.declare_parameter('baud_rate', 57600)
         self.declare_parameter('ids', [1, 2, 3, 4, 5, 6])
-        self.declare_parameter('smoothing_alpha', 0.30)  # Smoothing factor (0.05-0.5)
+        self.declare_parameter('smoothing_alpha', 0.12)  # Smoothing factor (0.05-0.5)
         self.declare_parameter('update_rate', 50.0)     # Hz
 
         # ----------------------------------------
