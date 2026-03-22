@@ -5,7 +5,7 @@ import math
 import random
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String, Float64MultiArray, Bool, Int32MultiArray
+from std_msgs.msg import String, Float64MultiArray, Bool, Int32MultiArray, Int32
 
 
 class MakiBehavior(Node):
@@ -73,6 +73,17 @@ class MakiBehavior(Node):
         self.no_face_threshold = 90
 
         self.search_mode = False
+
+        # ------------------------------------------
+        # DOA-guided search (from /respeaker/doa)
+        # ------------------------------------------
+        self._last_doa = None
+        self.doa_sub = self.create_subscription(
+            Int32,
+            '/respeaker/doa',
+            self._on_doa,
+            10
+        )
 
         # ------------------------------------------
         # Blink state (occasional blink every 6–12 seconds)
@@ -297,20 +308,43 @@ class MakiBehavior(Node):
             "target_pitch": 0.0,
             "hold_ticks": 0,
             "hold_max": 0,
-            "speed": 0.08,
+            "speed": 0.22,
+            "last_side": 0,  # alternates ±1 when no DOA available
         }
 
         def choose_new_target():
-            # Random yaw left/right and pitch up/down
-            state["target_yaw"] = random.uniform(-15.0, 15.0)            # changed from -18.0, 18.0
+            doa = self._last_doa
+
+            if doa is not None:
+                # Convert DOA (0–359°) to a yaw target within ±22°.
+                # ReSpeaker convention: 0=front, 90=right, 270=left.
+                if doa <= 90:
+                    target_yaw = doa * (22.0 / 90.0)
+                elif doa >= 270:
+                    target_yaw = (doa - 360) * (22.0 / 90.0)
+                else:
+                    # Speaker is mostly behind — alternate sides
+                    side = 1 if state["last_side"] <= 0 else -1
+                    state["last_side"] = side
+                    target_yaw = side * random.uniform(12.0, 22.0)
+                # Small noise so it doesn't freeze on exactly one angle
+                target_yaw += random.uniform(-4.0, 4.0)
+                state["target_yaw"] = max(-22.0, min(22.0, target_yaw))
+            else:
+                # No DOA: sweep strongly left/right in alternating fashion
+                # so the movement is always visibly noticeable
+                side = 1 if state["last_side"] <= 0 else -1
+                state["last_side"] = side
+                state["target_yaw"] = side * random.uniform(12.0, 22.0)
+
             state["target_pitch"] = random.uniform(-6.0, 6.0)
 
-            # How long to hold once we've reached the target (in timer ticks)
+            # How long to hold once we've reached the target (in timer ticks at 20 Hz)
             state["hold_ticks"] = 0
-            state["hold_max"] = random.randint(10, 60)  # short to longer pauses
+            state["hold_max"] = random.randint(5, 20)  # 0.25–1 s hold
 
             # How fast to move toward the new target (0.0–1.0 smoothing factor)
-            state["speed"] = random.uniform(0.06, 0.20)
+            state["speed"] = random.uniform(0.18, 0.35)  # noticeably faster
 
         choose_new_target()
 
@@ -472,6 +506,12 @@ class MakiBehavior(Node):
 
         t = self.create_timer(0.045, step_timer)
         self._timers.append(t)
+
+    # ==========================================
+    # DOA callback — track latest Direction of Arrival
+    # ==========================================
+    def _on_doa(self, msg: Int32):
+        self._last_doa = int(msg.data)
 
     # ==========================================
     # Behavior — look_at_user: track face from /maki/face_pos
