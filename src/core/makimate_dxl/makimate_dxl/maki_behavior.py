@@ -286,8 +286,10 @@ class MakiBehavior(Node):
     # ==========================================
     def start_find_me(self):
         def step_timer():
-            self.phase += 0.035
-            yaw = 15.0 * math.sin(self.phase)                            # changed from 18.0 to 15.0
+            self.phase += 0.05
+            # Asymmetric sweep: bias toward the wider left side (-20°) vs right (+8°)
+            raw = math.sin(self.phase)
+            yaw = raw * 8.0 if raw >= 0 else raw * 20.0
             self.send_with_blink(yaw, 0.0, 0.0, 0.0, 20.0, -20.0)
         t = self.create_timer(0.05, step_timer)
         self._timers.append(t)
@@ -301,14 +303,13 @@ class MakiBehavior(Node):
     #   → creates natural "looking around" behavior
     # ==========================================
     def start_circle_scan(self):
+        # No internal smoothing — send target directly so the DXL does
+        # all the smoothing and the head actually reaches full amplitude.
         state = {
-            "yaw": 0.0,
-            "pitch": 0.0,
             "target_yaw": 0.0,
             "target_pitch": 0.0,
             "hold_ticks": 0,
             "hold_max": 0,
-            "speed": 0.22,
             "last_side": 0,  # alternates ±1 when no DOA available
         }
 
@@ -316,61 +317,44 @@ class MakiBehavior(Node):
             doa = self._last_doa
 
             if doa is not None:
-                # Convert DOA (0–359°) to a yaw target within ±22°.
+                # Convert DOA (0–359°) to a yaw target.
                 # ReSpeaker convention: 0=front, 90=right, 270=left.
                 if doa <= 90:
-                    target_yaw = doa * (22.0 / 90.0)
+                    target_yaw = doa * (8.0 / 90.0)      # right, max ~8°
                 elif doa >= 270:
-                    target_yaw = (doa - 360) * (22.0 / 90.0)
+                    target_yaw = (doa - 360) * (20.0 / 90.0)  # left, max ~20°
                 else:
                     # Speaker is mostly behind — alternate sides
                     side = 1 if state["last_side"] <= 0 else -1
                     state["last_side"] = side
-                    target_yaw = side * random.uniform(12.0, 22.0)
-                # Small noise so it doesn't freeze on exactly one angle
-                target_yaw += random.uniform(-4.0, 4.0)
-                state["target_yaw"] = max(-22.0, min(22.0, target_yaw))
+                    target_yaw = side * (8.0 if side > 0 else 18.0)
+                target_yaw += random.uniform(-3.0, 3.0)
+                state["target_yaw"] = max(-21.0, min(8.0, target_yaw))
             else:
-                # No DOA: sweep strongly left/right in alternating fashion
-                # so the movement is always visibly noticeable
+                # No DOA: alternate left/right with the full available range
                 side = 1 if state["last_side"] <= 0 else -1
                 state["last_side"] = side
-                state["target_yaw"] = side * random.uniform(12.0, 22.0)
+                if side > 0:
+                    state["target_yaw"] = random.uniform(5.0, 8.0)    # right (hardware limited)
+                else:
+                    state["target_yaw"] = random.uniform(-20.0, -10.0)  # left (wide range)
 
             state["target_pitch"] = random.uniform(-6.0, 6.0)
-
-            # How long to hold once we've reached the target (in timer ticks at 20 Hz)
             state["hold_ticks"] = 0
-            state["hold_max"] = random.randint(5, 20)  # 0.25–1 s hold
-
-            # How fast to move toward the new target (0.0–1.0 smoothing factor)
-            state["speed"] = random.uniform(0.18, 0.35)  # noticeably faster
+            state["hold_max"] = random.randint(20, 50)  # 1–2.5 s hold (DXL needs time to arrive)
 
         choose_new_target()
 
         def step_timer():
-            # Move toward the current target
-            alpha = state["speed"]
+            # Send target directly — DXL's own alpha=0.30 provides smooth motion
+            state["hold_ticks"] += 1
+            if state["hold_ticks"] >= state["hold_max"]:
+                choose_new_target()
 
-            state["yaw"] += alpha * (state["target_yaw"] - state["yaw"])
-            state["pitch"] += alpha * (state["target_pitch"] - state["pitch"])
-
-            # Clamp to safe limits
-            yaw = max(-38.0, min(38.0, state["yaw"]))
-            pitch = max(-16.0, min(16.0, state["pitch"]))
-            state["yaw"] = yaw
-            state["pitch"] = pitch
-
-            # If we are close enough to the target, start counting hold time
-            if (
-                abs(state["target_yaw"] - yaw) < 1.0
-                and abs(state["target_pitch"] - pitch) < 1.0
-            ):
-                state["hold_ticks"] += 1
-                if state["hold_ticks"] >= state["hold_max"]:
-                    choose_new_target()
-
-            self.send_with_blink(yaw, pitch, 0.0, 0.0, 20.0, -20.0)
+            self.send_with_blink(
+                state["target_yaw"], state["target_pitch"],
+                0.0, 0.0, 20.0, -20.0
+            )
 
         # 20 Hz-ish search timer
         t = self.create_timer(0.05, step_timer)

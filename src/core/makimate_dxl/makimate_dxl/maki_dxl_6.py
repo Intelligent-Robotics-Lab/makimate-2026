@@ -55,7 +55,7 @@ class MakiDxl6(Node):
         self.declare_parameter('port_name', '/dev/ttyACM0')
         self.declare_parameter('baud_rate', 57600)
         self.declare_parameter('ids', [1, 2, 3, 4, 5, 6])
-        self.declare_parameter('smoothing_alpha', 0.08)  # Smoothing factor (0.05-0.5)
+        self.declare_parameter('smoothing_alpha', 0.30)  # Smoothing factor (0.05-0.5)
         self.declare_parameter('update_rate', 50.0)     # Hz
 
         # ----------------------------------------
@@ -74,7 +74,7 @@ class MakiDxl6(Node):
         # SOFTWARE RELATIVE ANGLE LIMITS (DEG)
         # ----------------------------------------
         self.min_rel_deg = {
-            1: -9.0,   # neck_yaw
+            1: -22.0,  # neck_yaw — hardware allows 38° left, using 22° safely
             2: -18.0,  # neck_pitch
             3: -12.0,  # eyes_pitch
             4: -15.0,  # eyes_yaw
@@ -82,7 +82,7 @@ class MakiDxl6(Node):
             6: -26.0,  # lid_right
         }
         self.max_rel_deg = {
-            1: 9.0,    # neck_yaw
+            1: 9.0,    # neck_yaw — hardware-limited to ~9.7° right
             2: 18.0,   # neck_pitch
             3: 10.0,   # eyes_pitch
             4: 15.0,   # eyes_yaw
