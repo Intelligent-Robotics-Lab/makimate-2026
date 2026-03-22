@@ -55,8 +55,8 @@ class MakiDxl6(Node):
         self.declare_parameter('port_name', '/dev/ttyACM0')
         self.declare_parameter('baud_rate', 57600)
         self.declare_parameter('ids', [1, 2, 3, 4, 5, 6])
-        self.declare_parameter('smoothing_alpha', 0.12)  # Smoothing factor (0.05-0.5)
-        self.declare_parameter('update_rate', 50.0)     # Hz
+        self.declare_parameter('smoothing_alpha', 0.18)  # Smoothing factor (0.05-0.5)
+        self.declare_parameter('update_rate', 20.0)     # Hz — 57600 baud fits ~6 motors at 20Hz
 
         # ----------------------------------------
         # HARDWARE LIMITS FROM ROBOT_LIMITS
@@ -202,31 +202,39 @@ class MakiDxl6(Node):
             self.current_positions[idx] += self.smoothing_alpha * (
                 self.target_positions[idx] - self.current_positions[idx]
             )
-            
+
             # Convert to ticks
             ticks = self._deg_to_ticks_for_id(dxl_id, self.current_positions[idx])
-            
+
             # Clamp to hardware limits (avoid boundary values)
             ticks = max(
                 self.min_ticks[dxl_id] + 1,
                 min(self.max_ticks[dxl_id] - 1, ticks)
             )
 
-            # Send to servo
-            result, error = self.packet_handler.write4ByteTxRx(
-                self.port_handler, dxl_id,
-                self.ADDR_GOAL_POSITION, ticks
-            )
+            # Send to servo — catch serial errors so a transient glitch doesn't crash the node
+            try:
+                result, error = self.packet_handler.write4ByteTxRx(
+                    self.port_handler, dxl_id,
+                    self.ADDR_GOAL_POSITION, ticks
+                )
+            except Exception as e:
+                self.get_logger().warn(
+                    f'Serial error on ID {dxl_id}: {e}', throttle_duration_sec=2.0
+                )
+                continue
 
             if result != COMM_SUCCESS:
-                self.get_logger().error(
+                self.get_logger().warn(
                     f"Failed to set ID {dxl_id} goal: "
-                    f"{self.packet_handler.getTxRxResult(result)}"
+                    f"{self.packet_handler.getTxRxResult(result)}",
+                    throttle_duration_sec=2.0
                 )
             elif error != 0:
-                self.get_logger().error(
+                self.get_logger().warn(
                     f"Dynamixel error on ID {dxl_id}: "
-                    f"{self.packet_handler.getRxPacketError(error)}"
+                    f"{self.packet_handler.getRxPacketError(error)}",
+                    throttle_duration_sec=2.0
                 )
 
     # ----------------------------------------
