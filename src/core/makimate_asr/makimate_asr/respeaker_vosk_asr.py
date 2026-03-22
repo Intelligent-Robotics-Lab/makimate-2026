@@ -231,12 +231,20 @@ class ReSpeakerVoskASR(Node):
                     self.get_logger().error(f"Failed to reinitialize recognizer: {e2}")
 
 
+    # Single-word noise transcripts that Vosk hallucinates from background/motor sounds
+    NOISE_WORDS = {'huh', 'h', 'uh', 'um', 'hmm', 'mm', 'ah', 'eh', 'oh', 'a', 'the', 'and'}
+
     def _extract_text(self, result_json: str) -> Optional[str]:
         import json
         try:
             res = json.loads(result_json)
             text = res.get("text", "").strip()
-            return text if text else None
+            if not text:
+                return None
+            if len(text.split()) == 1 and text.lower() in self.NOISE_WORDS:
+                self.get_logger().debug(f"Filtered noise transcript: {text!r}")
+                return None
+            return text
         except Exception as e:
             self.get_logger().warn(f"Failed to parse Vosk result: {e}")
             return None
