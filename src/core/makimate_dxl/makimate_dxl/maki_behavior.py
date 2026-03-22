@@ -525,13 +525,15 @@ class MakiBehavior(Node):
         if abs(y) < DEADZONE:
             y = 0.0
 
-        MAX_YAW = 38.0
-        MAX_PITCH = 16.0
-        K_YAW = 1.0
-        K_PITCH = 0.8
+        MAX_YAW = 15.0    # stay within hardware clamped range to avoid integrator windup
+        MAX_PITCH = 14.0
+        K_YAW = 0.5      # proportional gain: face_pos in [-1,1], neck_yaw in degrees
+        K_PITCH = 0.4
 
-        # x>0 → face right; y>0 → face up (depending on camera frame)
-        self.yaw_cmd += K_YAW * (-x)
+        # x>0 → face right of center → Maki turns right → neck_yaw negative
+        # Camera is mirrored: right-of-center in image = Maki's left → flip sign
+        self.yaw_cmd += K_YAW * x
+        # y>0 → face above center → look up → neck_pitch negative (back/up)
         self.pitch_cmd += K_PITCH * (-y)
 
         self.yaw_cmd = max(-MAX_YAW, min(MAX_YAW, self.yaw_cmd))
