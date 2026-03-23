@@ -68,8 +68,8 @@ class MakiBehavior(Node):
         self.no_face_counter = 0
 
         # If /maki/largest_face_bbox is ~10–15 Hz,
-        # 30 counts ≈ 2–3 seconds with no face before searching.
-        self.no_face_threshold = 30
+        # 90 counts ≈ 6–9 seconds with no face before searching.
+        self.no_face_threshold = 90
 
         self.search_mode = False
 
