@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+import asyncio
+import json
+import subprocess
+import threading
+from pathlib import Path
+from typing import Dict, Set
+
+import rclpy
+from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
+from rcl_interfaces.msg import Log
+
+import uvicorn
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse
+
+
+# ------------------------------------------------------------------ #
+# Server-side config — updated via dashboard, propagated to ROS nodes
+# ------------------------------------------------------------------ #
+SERVER_CONFIG: Dict = {
+    "llm_server_url": "http://127.0.0.1:8000",
+    "llm_model": "",
+    "whisper_server_url": "",
+    "whisper_model": "base",
+}
+
+# ------------------------------------------------------------------ #
+# Parameter registry — which params are visible/editable per node.
+# Must mirror the PARAMS object in dashboard.html.
+# ------------------------------------------------------------------ #
+PARAM_REGISTRY = {
+    "maki_dxl_6": ["smoothing_alpha", "update_rate"],
+    "maki_behavior": ["no_face_threshold"],
+    "speaker_recognition_node": ["threshold"],
+    "face_tracker": ["recognition_threshold", "recognition_interval"],
+    "respeaker_dsp": ["vad_threshold"],
+    "respeaker_vosk_asr": ["channel_index", "channels"],
+    "respeaker_whisper_asr": ["channel_index", "channels"],
+    "ai_command_router": ["wake_phrase", "sleep_phrase"],
+    "llm_bridge": ["laptop_host"],
+}
+
+
+# ------------------------------------------------------------------ #
+# ROS 2 node
+# ------------------------------------------------------------------ #
+
+class DashboardNode(Node):
+    def __init__(self):
+        super().__init__('makimate_dashboard')
+        self._clients: Set[WebSocket] = set()
+        self._loop: asyncio.AbstractEventLoop = None
+
+        self.create_subscription(Log, '/rosout', self._on_log, 100)
+        self.get_logger().info('Dashboard node ready — web UI on :8080')
+
+    def set_event_loop(self, loop: asyncio.AbstractEventLoop):
+        self._loop = loop
+
+    def _on_log(self, msg: Log):
+        if self._loop is None:
+            return
+        payload = json.dumps({
+            "type": "log",
+            "level": int(msg.level),
+            "name": msg.name,
+            "msg": msg.msg,
+        })
+        asyncio.run_coroutine_threadsafe(self._broadcast(payload), self._loop)
+
+    async def _broadcast(self, text: str):
+        dead = set()
+        for ws in list(self._clients):
+            try:
+                await ws.send_text(text)
+            except Exception:
+                dead.add(ws)
+        self._clients -= dead
+
+
+# ------------------------------------------------------------------ #
+# subprocess helpers
+# ------------------------------------------------------------------ #
+
+def ros2_param_get(node_name: str, param: str):
+    """Returns parsed value or None on failure."""
+    try:
+        r = subprocess.run(
+            ["ros2", "param", "get", f"/{node_name}", param],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode != 0:
+            return None
+        out = r.stdout.strip()
+        for prefix, cast in [
+            ("Double value is: ",  float),
+            ("Integer value is: ", int),
+            ("Boolean value is: ", lambda x: x.lower() == "true"),
+            ("String value is: ",  str),
+        ]:
+            if out.startswith(prefix):
+                return cast(out[len(prefix):])
+        return out
+    except Exception:
+        return None
+
+
+def ros2_param_set(node_name: str, param: str, value: str):
+    """Returns (success: bool, message: str)."""
+    try:
+        r = subprocess.run(
+            ["ros2", "param", "set", f"/{node_name}", param, str(value)],
+            capture_output=True, text=True, timeout=5,
+        )
+        return r.returncode == 0, (r.stdout.strip() or r.stderr.strip())
+    except subprocess.TimeoutExpired:
+        return False, "Timeout — node may not be running"
+    except Exception as e:
+        return False, str(e)
+
+
+def fetch_all_params() -> dict:
+    """Bulk-read all registered params. Skips nodes that are not running."""
+    result = {}
+    for node_name, params in PARAM_REGISTRY.items():
+        vals = {}
+        for p in params:
+            v = ros2_param_get(node_name, p)
+            if v is not None:
+                vals[p] = v
+        if vals:
+            result[node_name] = vals
+    return result
+
+
+# ------------------------------------------------------------------ #
+# FastAPI app
+# ------------------------------------------------------------------ #
+
+def create_app(node: DashboardNode) -> FastAPI:
+    app = FastAPI()
+    html_path = Path(__file__).parent / "dashboard.html"
+
+    @app.on_event("startup")
+    async def _startup():
+        node.set_event_loop(asyncio.get_event_loop())
+
+    @app.get("/", response_class=HTMLResponse)
+    async def get_dashboard():
+        return html_path.read_text()
+
+    @app.websocket("/ws")
+    async def ws_endpoint(ws: WebSocket):
+        await ws.accept()
+        node._clients.add(ws)
+        node.get_logger().info(
+            f"Dashboard client connected ({len(node._clients)} total)"
+        )
+        asyncio.create_task(_send_initial_state(ws, node))
+        try:
+            while True:
+                raw = await ws.receive_text()
+                await _handle(ws, node, json.loads(raw))
+        except WebSocketDisconnect:
+            pass
+        except Exception as e:
+            node.get_logger().warn(f"Dashboard WS error: {e}")
+        finally:
+            node._clients.discard(ws)
+            node.get_logger().info(
+                f"Dashboard client disconnected ({len(node._clients)} total)"
+            )
+
+    return app
+
+
+async def _send_initial_state(ws: WebSocket, node: DashboardNode):
+    loop = asyncio.get_event_loop()
+    params = await loop.run_in_executor(None, fetch_all_params)
+    try:
+        await ws.send_text(json.dumps({"type": "param_all", "params": params}))
+        await ws.send_text(json.dumps({"type": "server_config", "config": SERVER_CONFIG}))
+    except Exception:
+        pass
+
+
+async def _handle(ws: WebSocket, node: DashboardNode, msg: dict):
+    t = msg.get("type")
+    loop = asyncio.get_event_loop()
+
+    if t == "param_set":
+        node_name = msg["node"]
+        param     = msg["param"]
+        value     = msg["value"]
+        ok, detail = await loop.run_in_executor(
+            None, ros2_param_set, node_name, param, str(value)
+        )
+        await ws.send_text(json.dumps({
+            "type":   "param_set_ok" if ok else "param_set_fail",
+            "node":   node_name,
+            "param":  param,
+            "detail": detail,
+        }))
+        if ok:
+            real = await loop.run_in_executor(None, ros2_param_get, node_name, param)
+            if real is not None:
+                await node._broadcast(json.dumps({
+                    "type":  "param_value",
+                    "node":  node_name,
+                    "param": param,
+                    "value": real,
+                }))
+
+    elif t == "param_get":
+        val = await loop.run_in_executor(
+            None, ros2_param_get, msg["node"], msg["param"]
+        )
+        await ws.send_text(json.dumps({
+            "type":  "param_value",
+            "node":  msg["node"],
+            "param": msg["param"],
+            "value": val,
+        }))
+
+    elif t == "server_config":
+        for key in ("llm_server_url", "llm_model", "whisper_server_url", "whisper_model"):
+            if key in msg:
+                SERVER_CONFIG[key] = msg[key]
+
+        # Propagate to running ROS nodes where applicable
+        if "llm_server_url" in msg:
+            await loop.run_in_executor(
+                None, ros2_param_set, "llm_bridge", "laptop_host", msg["llm_server_url"]
+            )
+        if "whisper_server_url" in msg:
+            await loop.run_in_executor(
+                None, ros2_param_set, "respeaker_whisper_asr", "server_url",
+                msg["whisper_server_url"]
+            )
+        if "whisper_model" in msg:
+            await loop.run_in_executor(
+                None, ros2_param_set, "respeaker_whisper_asr", "model_size",
+                msg["whisper_model"]
+            )
+
+        await node._broadcast(json.dumps({"type": "server_config", "config": SERVER_CONFIG}))
+        node.get_logger().info(f"Server config updated: {SERVER_CONFIG}")
+
+
+# ------------------------------------------------------------------ #
+# Entry point
+# ------------------------------------------------------------------ #
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = DashboardNode()
+
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
+    spin_thread = threading.Thread(target=executor.spin, daemon=True)
+    spin_thread.start()
+
+    app = create_app(node)
+    uvicorn.run(app, host="0.0.0.0", port=8080, log_level="warning")
+
+    executor.shutdown()
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()
