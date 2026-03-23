@@ -9,6 +9,7 @@ from typing import Dict, Set
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
+from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy
 from rcl_interfaces.msg import Log
 
 import uvicorn
@@ -50,10 +51,15 @@ PARAM_REGISTRY = {
 class DashboardNode(Node):
     def __init__(self):
         super().__init__('makimate_dashboard')
-        self._clients: Set[WebSocket] = set()
+        self._ws_clients: Set[WebSocket] = set()
         self._loop: asyncio.AbstractEventLoop = None
 
-        self.create_subscription(Log, '/rosout', self._on_log, 100)
+        rosout_qos = QoSProfile(
+            depth=1000,
+            reliability=QoSReliabilityPolicy.RELIABLE,
+            durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.create_subscription(Log, '/rosout', self._on_log, rosout_qos)
         self.get_logger().info('Dashboard node ready — web UI on :8080')
 
     def set_event_loop(self, loop: asyncio.AbstractEventLoop):
@@ -72,12 +78,12 @@ class DashboardNode(Node):
 
     async def _broadcast(self, text: str):
         dead = set()
-        for ws in list(self._clients):
+        for ws in list(self._ws_clients):
             try:
                 await ws.send_text(text)
             except Exception:
                 dead.add(ws)
-        self._clients -= dead
+        self._ws_clients -= dead
 
 
 # ------------------------------------------------------------------ #
@@ -154,9 +160,9 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.websocket("/ws")
     async def ws_endpoint(ws: WebSocket):
         await ws.accept()
-        node._clients.add(ws)
+        node._ws_clients.add(ws)
         node.get_logger().info(
-            f"Dashboard client connected ({len(node._clients)} total)"
+            f"Dashboard client connected ({len(node._ws_clients)} total)"
         )
         asyncio.create_task(_send_initial_state(ws, node))
         try:
@@ -168,9 +174,9 @@ def create_app(node: DashboardNode) -> FastAPI:
         except Exception as e:
             node.get_logger().warn(f"Dashboard WS error: {e}")
         finally:
-            node._clients.discard(ws)
+            node._ws_clients.discard(ws)
             node.get_logger().info(
-                f"Dashboard client disconnected ({len(node._clients)} total)"
+                f"Dashboard client disconnected ({len(node._ws_clients)} total)"
             )
 
     return app
