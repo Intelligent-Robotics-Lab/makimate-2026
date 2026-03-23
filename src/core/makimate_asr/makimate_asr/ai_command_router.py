@@ -8,10 +8,10 @@ from rclpy.wait_for_message import wait_for_message
 
 from makimate_interfaces.msg import FaceTrackArray
 
-# Minimum voice cosine similarity to trust voice ID at all
-VOICE_THRESHOLD = 0.40
+# Match speaker_recognition_node's own threshold — it already filters below this
+VOICE_THRESHOLD = 0.30
 # Minimum fused confidence to inject the user's name into the LLM message
-FUSED_THRESHOLD = 0.55
+FUSED_THRESHOLD = 0.30
 
 
 class ASRCommandRouter(Node):
@@ -215,8 +215,11 @@ class ASRCommandRouter(Node):
             return
 
         # Normal conversation → forward to LLM with identity context.
-        # Brief pause so speaker recognition (arrives ~15ms after ASR) can update state.
-        time.sleep(0.15)
+        # Reset stale identity from previous utterance, then wait for this utterance's
+        # speaker recognition result (arrives ~170ms after ASR based on observed timing).
+        self.current_speaker = "Unknown"
+        self.current_speaker_conf = 0.0
+        time.sleep(0.30)
 
         name, conf = self._fuse_identity()
         if name and conf >= FUSED_THRESHOLD:
