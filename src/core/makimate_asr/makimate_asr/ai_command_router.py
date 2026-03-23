@@ -1,9 +1,17 @@
+import time
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy
-from std_msgs.msg import String, Bool
-import time
+from std_msgs.msg import String, Bool, Float32
 from rclpy.wait_for_message import wait_for_message
+
+from makimate_interfaces.msg import FaceTrackArray
+
+# Minimum voice cosine similarity to trust voice ID at all
+VOICE_THRESHOLD = 0.40
+# Minimum fused confidence to inject the user's name into the LLM message
+FUSED_THRESHOLD = 0.55
 
 
 class ASRCommandRouter(Node):
@@ -49,13 +57,20 @@ class ASRCommandRouter(Node):
         self._awake_pub = self.create_publisher(Bool, awake_topic, _latched_qos)
         self._tts_pub = self.create_publisher(String, tts_topic, 10)
 
-        # Speaker tracking
+        # ---- Identity state ----
         self.current_speaker = "Unknown"
+        self.current_speaker_conf = 0.0
+        self.current_face_name = "Unknown"
 
         # ---- Subscribers ----
         self._asr_sub = self.create_subscription(String, asr_topic, self._on_asr, 10)
         self._asr_enable_sub = self.create_subscription(Bool, asr_enable_topic, self._on_asr_enable, 10)
-        self.speaker_sub = self.create_subscription(String, '/voice/identified_speaker', self._on_speaker_identified, 10)
+        self.speaker_sub = self.create_subscription(
+            String, '/voice/identified_speaker', self._on_speaker_identified, 10)
+        self.speaker_conf_sub = self.create_subscription(
+            Float32, '/voice/speaker_confidence', self._on_speaker_confidence, 10)
+        self.face_tracks_sub = self.create_subscription(
+            FaceTrackArray, '/maki/face_tracks', self._on_face_tracks, 10)
 
         # ---- State ----
         self._awake = False
@@ -83,7 +98,6 @@ class ASRCommandRouter(Node):
         self.get_logger().info(f"[Router->TTS] {text!r}")
 
     def _send_llm_command(self, command: str):
-        """Send a control command like /reset to the LLM via /llm/request."""
         if not command:
             return
         msg = String()
@@ -92,13 +106,73 @@ class ASRCommandRouter(Node):
         self.get_logger().info(f"[Router->LLM] Sent command: {command!r}")
 
     # ------------------------------------------------------------------ #
-    # Callbacks
+    # Identity fusion
     # ------------------------------------------------------------------ #
-    def _on_speaker_identified(self, msg):
-        """Track who is currently speaking."""
+    def _on_speaker_identified(self, msg: String):
         self.current_speaker = msg.data
         self.get_logger().info(f'Speaker updated to: {self.current_speaker}')
-    
+
+    def _on_speaker_confidence(self, msg: Float32):
+        self.current_speaker_conf = float(msg.data)
+
+    def _on_face_tracks(self, msg: FaceTrackArray):
+        """Track the name of the best-scoring face from face_recognition."""
+        if not msg.faces:
+            self.current_face_name = "Unknown"
+            return
+        # face_tracker publishes tracks sorted by score descending; first = best
+        best = msg.faces[0]
+        self.current_face_name = best.name if best.name else "Unknown"
+
+    def _fuse_identity(self):
+        """
+        Fuse voice and face identity signals.
+
+        Returns (name: str | None, fused_confidence: float).
+
+        Fusion rules:
+          - Both modalities agree on same name → high confidence (0.4 + voice_conf)
+          - Voice only (above threshold)       → voice_conf
+          - Face only (recognition matched)    → 0.5 (moderate, no distance score)
+          - Disagreement                        → (None, 0.0)
+        """
+        voice_name = self.current_speaker if self.current_speaker != "Unknown" else None
+        voice_conf = self.current_speaker_conf
+        face_name = self.current_face_name if self.current_face_name != "Unknown" else None
+
+        # Discard weak voice ID
+        if voice_name and voice_conf < VOICE_THRESHOLD:
+            voice_name = None
+
+        if voice_name and face_name:
+            if voice_name.lower() == face_name.lower():
+                fused_conf = min(1.0, 0.4 + voice_conf)
+                self.get_logger().info(
+                    f"Identity fusion: voice={voice_name}({voice_conf:.2f}) + "
+                    f"face={face_name} → AGREE fused_conf={fused_conf:.2f}"
+                )
+                return voice_name, fused_conf
+            else:
+                self.get_logger().info(
+                    f"Identity fusion: voice={voice_name} vs face={face_name} → DISAGREE"
+                )
+                return None, 0.0
+        elif voice_name:
+            self.get_logger().info(
+                f"Identity fusion: voice only → {voice_name}({voice_conf:.2f})"
+            )
+            return voice_name, voice_conf
+        elif face_name:
+            self.get_logger().info(
+                f"Identity fusion: face only → {face_name}(0.50)"
+            )
+            return face_name, 0.5
+        else:
+            return None, 0.0
+
+    # ------------------------------------------------------------------ #
+    # Callbacks
+    # ------------------------------------------------------------------ #
     def _on_asr(self, msg: String):
         text = msg.data.strip()
         low = text.lower()
@@ -118,12 +192,11 @@ class ASRCommandRouter(Node):
                 self._publish_awake(True)
                 self._speak_immediate(self._wake_greeting)
             return
-            
+
         # Handle "hi" greetings when awake
         if any(word in low.split() for word in ['hi', 'hello', 'hey']):
             self.get_logger().info("Greeting detected, waiting for speaker recognition...")
-            
-            # Wait for the speaker identification message with timeout
+
             try:
                 success, speaker_msg = wait_for_message(
                     String,
@@ -131,30 +204,35 @@ class ASRCommandRouter(Node):
                     '/voice/identified_speaker',
                     time_to_wait=0.5
                 )
-                
-                if success and speaker_msg:
-                    speaker = speaker_msg.data
-                    self.get_logger().info(f"Got speaker from wait_for_message: {speaker}")
-                else:
-                    speaker = "Unknown"
-                    
+                speaker = speaker_msg.data if success and speaker_msg else "Unknown"
             except Exception as e:
                 self.get_logger().warn(f"No speaker message received: {e}")
                 speaker = "Unknown"
-            
-            # Generate greeting
-            if speaker and speaker != "Unknown":
-                response = f"Hi {speaker}!"
-            else:
-                response = f"Hi there!"
-            
+
+            response = f"Hi {speaker}!" if speaker and speaker != "Unknown" else "Hi there!"
             self.get_logger().info(f"Greeting response: {response}")
             self._speak_immediate(response)
             return
 
-        # Normal conversation: forward to LLM
+        # Normal conversation → forward to LLM with identity context.
+        # Brief pause so speaker recognition (arrives ~15ms after ASR) can update state.
+        time.sleep(0.15)
+
+        name, conf = self._fuse_identity()
+        if name and conf >= FUSED_THRESHOLD:
+            llm_text = f"[The person speaking with you is {name}.] {text}"
+            self.get_logger().info(
+                f"Injecting identity into LLM: {name} (fused_conf={conf:.2f})"
+            )
+        else:
+            llm_text = text
+            if name:
+                self.get_logger().info(
+                    f"Identity below threshold ({name}, conf={conf:.2f}) — not injecting"
+                )
+
         out = String()
-        out.data = text
+        out.data = llm_text
         self._llm_req_pub.publish(out)
         self.get_logger().info("[Router->LLM] forwarded user text.")
 
@@ -171,11 +249,11 @@ class ASRCommandRouter(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = ASRCommandRouter()
-    
+
     from rclpy.executors import MultiThreadedExecutor
     executor = MultiThreadedExecutor(num_threads=10)
     executor.add_node(node)
-    
+
     try:
         executor.spin()
     except KeyboardInterrupt:
