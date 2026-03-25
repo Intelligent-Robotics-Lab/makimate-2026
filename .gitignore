@@ -3,6 +3,12 @@ build/
 install/
 log/
 
+# Python virtual environments
+venv/
+.venv/
+**/venv/
+**/.venv/
+
 # Per-robot motor calibration — commit your robot's file or keep it local.
 # The file in git (config/motor_limits.yaml) is the reference robot's values.
 # To keep a per-robot override out of git, copy it elsewhere and point the

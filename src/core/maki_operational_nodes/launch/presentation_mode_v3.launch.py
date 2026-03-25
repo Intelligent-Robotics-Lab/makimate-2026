@@ -19,7 +19,7 @@ def generate_launch_description():
             shell_prefix
             + "ros2 run makimate_asr respeaker_whisper_asr "
               "--ros-args "
-              "-p device:=0 "
+              "-p device:=1 "
               "-p model_size:=base "
               "-p asr_topic:=/asr/text "
               "-p enable_topic:=/asr/enable "
