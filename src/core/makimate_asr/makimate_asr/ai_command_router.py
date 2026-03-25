@@ -3,6 +3,7 @@ import time
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy
+from rclpy.callback_groups import ReentrantCallbackGroup
 from std_msgs.msg import String, Bool, Float32
 
 from makimate_interfaces.msg import FaceTrackArray
@@ -61,15 +62,18 @@ class ASRCommandRouter(Node):
         self.current_speaker_conf = 0.0
         self.current_face_name = "Unknown"
 
+        # Reentrant so identity callbacks can fire during sleep() in _on_asr
+        _cg = ReentrantCallbackGroup()
+
         # ---- Subscribers ----
-        self._asr_sub = self.create_subscription(String, asr_topic, self._on_asr, 10)
-        self._asr_enable_sub = self.create_subscription(Bool, asr_enable_topic, self._on_asr_enable, 10)
+        self._asr_sub = self.create_subscription(String, asr_topic, self._on_asr, 10, callback_group=_cg)
+        self._asr_enable_sub = self.create_subscription(Bool, asr_enable_topic, self._on_asr_enable, 10, callback_group=_cg)
         self.speaker_sub = self.create_subscription(
-            String, '/voice/identified_speaker', self._on_speaker_identified, 10)
+            String, '/voice/identified_speaker', self._on_speaker_identified, 10, callback_group=_cg)
         self.speaker_conf_sub = self.create_subscription(
-            Float32, '/voice/speaker_confidence', self._on_speaker_confidence, 10)
+            Float32, '/voice/speaker_confidence', self._on_speaker_confidence, 10, callback_group=_cg)
         self.face_tracks_sub = self.create_subscription(
-            FaceTrackArray, '/maki/face_tracks', self._on_face_tracks, 10)
+            FaceTrackArray, '/maki/face_tracks', self._on_face_tracks, 10, callback_group=_cg)
 
         # ---- State ----
         self._awake = False
