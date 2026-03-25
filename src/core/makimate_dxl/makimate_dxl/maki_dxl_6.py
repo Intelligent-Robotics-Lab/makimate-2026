@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import math
+from pathlib import Path
 from typing import List
 
+import yaml
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float64MultiArray
@@ -19,9 +21,11 @@ TICKS_PER_DEG = TICKS_PER_REV / DEG_PER_REV  # ~11.38 ticks/deg
 
 
 # ----------------------------------------------------
-# ROBOT-SPECIFIC LIMITS (EDIT HERE FOR DIFFERENT ROBOTS)
+# FALLBACK LIMITS — used only when no YAML config is found.
+# Run tools/calibrate_motors.py to generate config/motor_limits.yaml
+# for your specific robot.
 # ----------------------------------------------------
-ROBOT_LIMITS = {
+_DEFAULT_ROBOT_LIMITS = {
     1: {"min": 28, "max": 570},
     2: {"min": 1748, "max": 2348},
     3: {"min": 532, "max": 1467},
@@ -29,16 +33,19 @@ ROBOT_LIMITS = {
     5: {"min": 2432, "max": 3121},
     6: {"min": 1097, "max": 1786},
 }
-
-# ACTUAL NEUTRAL POSITIONS (measured, not calculated!)
-ROBOT_NEUTRAL_POSITIONS = {
-    1: 460,   # neck yaw
-    2: 2077,  # neck pitch
-    3: 1000,  # eyes pitch
-    4: 2028,  # eyes yaw
-    5: 3007,  # lid left
-    6: 1209,  # lid right
+_DEFAULT_NEUTRAL_POSITIONS = {
+    1: 460,   # eye_pitch
+    2: 2077,  # neck_pitch
+    3: 1000,  # neck_yaw
+    4: 2028,  # eye_yaw
+    5: 3007,  # lid_left
+    6: 1209,  # lid_right
 }
+
+# Default config file location — resolve symlinks first so colcon --symlink-install works.
+# Walks up: maki_dxl_6.py → makimate_dxl/ → makimate_dxl/ → makimate_dxl (pkg) → core → src → repo
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+_DEFAULT_CONFIG_PATH = str(_REPO_ROOT / "config" / "motor_limits.yaml")
 
 
 class MakiDxl6(Node):
@@ -57,18 +64,17 @@ class MakiDxl6(Node):
         self.declare_parameter('ids', [1, 2, 3, 4, 5, 6])
         self.declare_parameter('smoothing_alpha', 0.18)  # Smoothing factor (0.05-0.5)
         self.declare_parameter('update_rate', 20.0)     # Hz — 57600 baud fits ~6 motors at 20Hz
+        self.declare_parameter('motor_config_file', _DEFAULT_CONFIG_PATH)
 
         # ----------------------------------------
-        # HARDWARE LIMITS FROM ROBOT_LIMITS
+        # HARDWARE LIMITS — loaded from YAML or fallback to defaults
         # ----------------------------------------
-        raw_limits = ROBOT_LIMITS
+        config_path = Path(self.get_parameter('motor_config_file').value)
+        raw_limits, self.neutral_ticks = self._load_motor_config(config_path)
 
         # Convert into usable dicts
         self.min_ticks = {i: raw_limits[i]["min"] for i in raw_limits}
         self.max_ticks = {i: raw_limits[i]["max"] for i in raw_limits}
-
-        # Use MEASURED neutral positions instead of calculated midpoint
-        self.neutral_ticks = ROBOT_NEUTRAL_POSITIONS
 
         # ----------------------------------------
         # SOFTWARE RELATIVE ANGLE LIMITS (DEG)
@@ -164,6 +170,30 @@ class MakiDxl6(Node):
             "Publish [6] relative degree values to /maki/joint_goals.\n"
             "0 deg = neutral per-joint midpoint."
         )
+
+    # ----------------------------------------
+    # MOTOR CONFIG LOADING
+    # ----------------------------------------
+    def _load_motor_config(self, path: Path):
+        """Load motor limits and neutral positions from YAML. Falls back to defaults."""
+        if path.exists():
+            try:
+                with open(path) as f:
+                    cfg = yaml.safe_load(f)
+                limits = {int(k): v for k, v in cfg['robot_limits'].items()}
+                neutrals = {int(k): int(v) for k, v in cfg['robot_neutral_positions'].items()}
+                self.get_logger().info(f"Loaded motor config from {path}")
+                return limits, neutrals
+            except Exception as e:
+                self.get_logger().warn(
+                    f"Failed to parse motor config {path}: {e} — using hardcoded defaults"
+                )
+        else:
+            self.get_logger().warn(
+                f"Motor config not found at {path} — using hardcoded defaults. "
+                f"Run tools/calibrate_motors.py to generate per-robot config."
+            )
+        return _DEFAULT_ROBOT_LIMITS, _DEFAULT_NEUTRAL_POSITIONS
 
     # ----------------------------------------
     # DEGREES → TICKS CONVERSION

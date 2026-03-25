@@ -1,0 +1,45 @@
+# MakiMate Pi Python dependencies — curated minimal list.
+# Install into a venv (recommended) or system Python.
+#
+# Usage (venv):
+#   python3 -m venv ~/maki_venv
+#   source ~/maki_venv/bin/activate
+#   pip install -r env/pi_requirements.txt
+#
+# Or system-wide (if colcon/ROS nodes need it without venv activation):
+#   sudo /usr/bin/python3 -m pip install -r env/pi_requirements.txt --break-system-packages
+
+# ---- ASR ----
+vosk>=0.3.45
+
+# ---- Audio I/O ----
+sounddevice>=0.4.6
+
+# ---- Vision ----
+# face-recognition requires cmake + dlib (apt install cmake libdlib-dev first)
+face-recognition>=1.3.0
+# opencv: prefer the system package (python3-opencv via apt) to avoid recompiling
+# Uncomment only if apt version is missing:
+# opencv-python-headless>=4.8.0
+
+# ---- Robot hardware ----
+dynamixel-sdk>=3.7.31
+
+# ---- Data / config ----
+numpy>=1.24
+PyYAML>=6.0
+
+# ---- HTTP / networking ----
+requests>=2.31
+websockets>=12.0
+aiohttp>=3.9
+
+# ---- Dashboard web server ----
+fastapi>=0.111
+uvicorn>=0.29
+
+# ---- TTS (optional — only if NOT using the Piper binary) ----
+# piper-tts requires onnxruntime; the prebuilt binary in piper_bin/ is preferred.
+# Uncomment if you want the Python package instead:
+# piper-tts>=1.2.0
+# onnxruntime>=1.17.0

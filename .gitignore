@@ -3,6 +3,12 @@ build/
 install/
 log/
 
+# Per-robot motor calibration — commit your robot's file or keep it local.
+# The file in git (config/motor_limits.yaml) is the reference robot's values.
+# To keep a per-robot override out of git, copy it elsewhere and point the
+# motor_config_file ROS parameter at the copy.
+# config/motor_limits.yaml  ← uncomment this line to gitignore it
+
 # Piper runtime directory: ignore everything inside...
 piper_bin/*
 
