@@ -3,8 +3,12 @@
 
 # Table of Contents
 [Setup](https://github.com/Intelligent-Robotics-Lab/makimate-2026/tree/main?tab=readme-ov-file#setup)
+
 [Git Commands](https://github.com/Intelligent-Robotics-Lab/makimate-2026/edit/main/README.md#git-commands)
+
 [Webpage](https://github.com/Intelligent-Robotics-Lab/makimate-2026/edit/main/README.md#webpage-dashboard)
+
+[Server Setup](https://github.com/Intelligent-Robotics-Lab/makimate-2026/edit/main/README.md#server-setup)
 
 ## Setup
 **Raspberry Pi**
