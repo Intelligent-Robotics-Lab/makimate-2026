@@ -10,6 +10,8 @@
 
 [Server Setup](https://github.com/Intelligent-Robotics-Lab/makimate-2026/edit/main/README.md#server-setup)
 
+---
+
 ## Setup
 **Raspberry Pi**
 1) Open terminal on the Raspberry Pi
@@ -39,6 +41,8 @@ git add src/makimate_asr/
 git commit -m "Updated ASR (example)"
 git push
 ```
+
+---
 
 ## Webpage Dashboard
 The dashboard is used for real-time logging and modification of Makimate's ROS parameters. Additionally, you can change the LLM model and server URL to be used, along with changing what ASR model is used.
