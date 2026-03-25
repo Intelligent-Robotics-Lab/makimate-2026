@@ -1,5 +1,11 @@
 # makimate-2026
 
+
+# Table of Contents
+[Setup](https://github.com/Intelligent-Robotics-Lab/makimate-2026/tree/main?tab=readme-ov-file#setup)
+[Git Commands](https://github.com/Intelligent-Robotics-Lab/makimate-2026/edit/main/README.md#git-commands)
+[Webpage](https://github.com/Intelligent-Robotics-Lab/makimate-2026/edit/main/README.md#webpage-dashboard)
+
 ## Setup
 **Raspberry Pi**
 1) Open terminal on the Raspberry Pi
@@ -19,7 +25,7 @@
 
 ---
 
-## Useful Git Commands
+## Git Commands
 - `git pull origin master`
 - `git commit -m 'Some message about the change'`
 - `git push origin master`
@@ -29,6 +35,15 @@ git add src/makimate_asr/
 git commit -m "Updated ASR (example)"
 git push
 ```
+
+## Webpage Dashboard
+The dashboard is used for real-time logging and modification of Makimate's ROS parameters. Additionally, you can change the LLM model and server URL to be used, along with changing what ASR model is used.
+### Opening the Webpage
+1) In the Pi's terminal, run the following two commands:
+2) `source ~/makimate-2026/install/setup.bash`
+3) `ros2 run makimate_dashboard dashboard`
+4) On your browser, type in `http://<pi-ip>:8080`
+
 
 ---
 ## Project Structure
