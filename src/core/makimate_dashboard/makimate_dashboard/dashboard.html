@@ -136,14 +136,16 @@ input[type=checkbox]{accent-color:#f56565;cursor:pointer}
           <option value="tiny">tiny — fastest (Pi local)</option>
           <option value="base" selected>base — fast (Pi local)</option>
           <option value="small">small — balanced</option>
-          <option value="medium">medium — good</option>
-          <option value="large-v3">large-v3 — best accuracy</option>
-          <option value="distil-large-v3">distil-large-v3 — fast + good</option>
+          <option value="medium">medium — good (GPU)</option>
+          <option value="large-v3">large-v3 — best accuracy (GPU)</option>
+          <option value="distil-large-v3">distil-large-v3 — fast + accurate (GPU)</option>
         </select>
       </div>
       <div class="apply-row">
         <button class="btn pri" onclick="applyServer('whisper')">Apply Whisper</button>
+        <button class="btn" onclick="checkWhisperServer()">Check Server</button>
       </div>
+      <div id="whisper-status" style="font-size:.68em;color:#718096;margin-top:-4px;min-height:1.2em"></div>
     </div>
 
   </div><!-- /right -->
@@ -172,13 +174,10 @@ const PARAMS = {
   respeaker_dsp: [
     {n:"vad_threshold",    l:"VAD Threshold (dB)",      t:"f", min:0,   max:10,   step:.5},
   ],
-  respeaker_vosk_asr: [
-    {n:"channels",         l:"Channels",                t:"i", min:1,   max:6,    step:1},
-    {n:"channel_index",    l:"Channel Index",           t:"i", min:0,   max:5,    step:1},
-  ],
   respeaker_whisper_asr: [
-    {n:"channels",         l:"Channels",                t:"i", min:1,   max:6,    step:1},
-    {n:"channel_index",    l:"Channel Index",           t:"i", min:0,   max:5,    step:1},
+    {n:"vad_aggressiveness",  l:"VAD Aggressiveness (0-3)", t:"i", min:0,   max:3,    step:1},
+    {n:"silence_ms",          l:"Silence Gap (ms)",         t:"i", min:200, max:1200, step:50},
+    {n:"no_speech_threshold", l:"No-Speech Threshold",      t:"f", min:.1,  max:.95,  step:.05},
   ],
   ai_command_router: [
     {n:"wake_phrase",      l:"Wake Phrase",             t:"s"},
@@ -274,6 +273,22 @@ function applyServer(which) {
       whisper_server_url: document.getElementById('whisper_server_url').value,
       whisper_model:      document.getElementById('whisper_model').value,
     });
+  }
+}
+
+async function checkWhisperServer() {
+  const url = document.getElementById('whisper_server_url').value.trim();
+  const el  = document.getElementById('whisper-status');
+  if (!url) { el.textContent = 'No server URL set — using Pi local inference.'; el.style.color='#718096'; return; }
+  el.textContent = 'Checking...'; el.style.color = '#718096';
+  try {
+    const r = await fetch(`${url}/health`, {signal: AbortSignal.timeout(4000)});
+    const d = await r.json();
+    el.textContent = `✓ Server online — active model: ${d.model}`;
+    el.style.color = '#68d391';
+  } catch(e) {
+    el.textContent = `✗ Cannot reach server: ${e.message}`;
+    el.style.color = '#fc8181';
   }
 }
 

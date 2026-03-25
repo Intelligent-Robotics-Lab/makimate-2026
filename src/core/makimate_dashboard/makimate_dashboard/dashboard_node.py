@@ -37,8 +37,7 @@ PARAM_REGISTRY = {
     "speaker_recognition_node": ["threshold"],
     "face_tracker": ["recognition_threshold", "recognition_interval"],
     "respeaker_dsp": ["vad_threshold"],
-    "respeaker_vosk_asr": ["channel_index", "channels"],
-    "respeaker_whisper_asr": ["channel_index", "channels"],
+    "respeaker_whisper_asr": ["vad_aggressiveness", "silence_ms", "no_speech_threshold"],
     "ai_command_router": ["wake_phrase", "sleep_phrase"],
     "llm_bridge": ["laptop_host"],
 }
@@ -125,6 +124,25 @@ def ros2_param_set(node_name: str, param: str, value: str):
         return False, "Timeout — node may not be running"
     except Exception as e:
         return False, str(e)
+
+
+def _whisper_server_set_model(server_url: str, model: str, node) -> None:
+    """POST /set_model to the ASR server. Runs in a thread executor."""
+    try:
+        import urllib.request
+        import json as _json
+        payload = _json.dumps({"model": model}).encode()
+        req = urllib.request.Request(
+            f"{server_url}/set_model",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            result = _json.loads(resp.read())
+        node.get_logger().info(f"ASR server model set: {result}")
+    except Exception as e:
+        node.get_logger().warn(f"Could not reach ASR server to set model: {e}")
 
 
 def fetch_all_params() -> dict:
@@ -246,10 +264,17 @@ async def _handle(ws: WebSocket, node: DashboardNode, msg: dict):
                 msg["whisper_server_url"]
             )
         if "whisper_model" in msg:
+            # Always update the Pi node param (used when server_url is empty = local mode)
             await loop.run_in_executor(
                 None, ros2_param_set, "respeaker_whisper_asr", "model_size",
                 msg["whisper_model"]
             )
+            # If a server URL is configured, also hot-swap the model on the server
+            server_url = SERVER_CONFIG.get("whisper_server_url", "").strip()
+            if server_url:
+                await loop.run_in_executor(
+                    None, _whisper_server_set_model, server_url, msg["whisper_model"], node
+                )
 
         await node._broadcast(json.dumps({"type": "server_config", "config": SERVER_CONFIG}))
         node.get_logger().info(f"Server config updated: {SERVER_CONFIG}")

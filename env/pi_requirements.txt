@@ -11,6 +11,8 @@
 
 # ---- ASR ----
 vosk>=0.3.45
+faster-whisper>=1.0.0
+webrtcvad>=2.0.10
 
 # ---- Audio I/O ----
 sounddevice>=0.4.6
