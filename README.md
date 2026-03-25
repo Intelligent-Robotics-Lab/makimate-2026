@@ -43,6 +43,7 @@ The dashboard is used for real-time logging and modification of Makimate's ROS p
 2) `source ~/makimate-2026/install/setup.bash`
 3) `ros2 run makimate_dashboard dashboard`
 4) On your browser, type in `http://<pi-ip>:8080`
+5) The <pi-ip> is the same one used for SSH; obtain it by running `hostname -I` in the Pi's terminal.
 
 
 ---
