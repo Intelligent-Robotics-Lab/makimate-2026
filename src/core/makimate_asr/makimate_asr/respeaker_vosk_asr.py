@@ -19,8 +19,8 @@ class ReSpeakerVoskASR(Node):
         # Declare parameters ONCE
         # -------------------------
         self.declare_parameter('sample_rate', 16000.0)  # float
-        # device: integer index, -1 means "use default input device"
-        self.declare_parameter('device', 0)
+        # device: integer index (-1 = default) or ALSA name (e.g. 'respeaker_shared')
+        self.declare_parameter('device', '0')
         self.declare_parameter(
             'model_path',
             '/home/emanuel/vosk_models/vosk-model-small-en-us-0.15'
@@ -47,14 +47,11 @@ class ReSpeakerVoskASR(Node):
         # -------------------------
         self.sample_rate = float(self.get_parameter('sample_rate').value)
 
-        dev_param = self.get_parameter('device').value
+        _dev_raw = str(self.get_parameter('device').value).strip()
         try:
-            self.device = int(dev_param)
-        except (TypeError, ValueError):
-            self.get_logger().warn(
-                f"Invalid device param {dev_param!r}, using default (-1)."
-            )
-            self.device = -1  # default device
+            self.device = int(_dev_raw)   # numeric index
+        except ValueError:
+            self.device = _dev_raw        # ALSA name e.g. 'respeaker_shared'
 
         self.model_path = self.get_parameter('model_path').value
         self.publish_llm = bool(self.get_parameter('publish_llm').value)
@@ -166,8 +163,9 @@ class ReSpeakerVoskASR(Node):
 
     def _start_audio_stream(self):
         try:
-            # -1 means "use default input device"
-            device_arg = None if self.device < 0 else self.device
+            # int -1 → default; int ≥0 → index; str → ALSA device name
+            device_arg = (None if isinstance(self.device, int) and self.device < 0
+                          else self.device)
 
             self.stream = sd.InputStream(
                 samplerate=self.sample_rate,

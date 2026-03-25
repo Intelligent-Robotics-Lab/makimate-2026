@@ -19,7 +19,7 @@ def generate_launch_description():
             shell_prefix
             + "ros2 run makimate_asr respeaker_whisper_asr "
               "--ros-args "
-              "-p device:=1 "
+              "-p device:=respeaker_shared "
               "-p model_size:=base "
               "-p asr_topic:=/asr/text "
               "-p enable_topic:=/asr/enable "
@@ -40,7 +40,7 @@ def generate_launch_description():
             + "ros2 run makimate_asr respeaker_vosk_asr "
               "--ros-args "
               "-p sample_rate:=16000.0 "
-              "-p device:=0 "
+              "-p device:=respeaker_shared "
               "-p model_path:=$HOME/vosk_models/vosk-model-small-en-us-0.15 "
               "-p spk_model_path:=$HOME/vosk_models/vosk-model-spk-0.4 "
               "-p publish_text:=false "

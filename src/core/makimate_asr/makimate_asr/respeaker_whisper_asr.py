@@ -113,7 +113,7 @@ class ReSpeakerWhisperASR(Node):
         super().__init__('respeaker_whisper_asr')
 
         # ---- Parameters ----
-        self.declare_parameter('device',               0)
+        self.declare_parameter('device',               '0')   # int index or ALSA name
         self.declare_parameter('model_size',           'base')
         self.declare_parameter('asr_topic',            '/asr/text')
         self.declare_parameter('enable_topic',         '/asr/enable')
@@ -123,7 +123,11 @@ class ReSpeakerWhisperASR(Node):
         self.declare_parameter('silence_ms',           400)    # ms of silence → utterance end
         self.declare_parameter('channels',             1)      # kept for API compat; UAC1.0 = 1
 
-        device             = int(self.get_parameter('device').value)
+        _dev_raw = str(self.get_parameter('device').value).strip()
+        try:
+            device = int(_dev_raw)   # numeric index
+        except ValueError:
+            device = _dev_raw        # ALSA name e.g. 'respeaker_shared'
         model_size         = self.get_parameter('model_size').value
         asr_topic          = self.get_parameter('asr_topic').value
         enable_topic       = self.get_parameter('enable_topic').value
@@ -161,7 +165,8 @@ class ReSpeakerWhisperASR(Node):
             self.get_logger().info(f"Whisper server mode: {self.server_url}")
 
         # ---- Audio stream ----
-        device_arg = None if device < 0 else device
+        # int -1 → default; int ≥0 → index; str → ALSA device name
+        device_arg = (None if isinstance(device, int) and device < 0 else device)
         self.stream = sd.InputStream(
             samplerate=SAMPLE_RATE,
             channels=1,
