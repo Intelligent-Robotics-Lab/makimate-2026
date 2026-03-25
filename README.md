@@ -51,7 +51,7 @@ The dashboard is used for real-time logging and modification of Makimate's ROS p
 Servers are required for LLM usage and can optionally be used to run larger ASR models as well. 
 
 ## ASR Server Setup
-1) Clone the repo.
+1) Clone the repo on the server.
 2) Navigate to the server folder: `cd ~/makimate-2026/makimate-asr-server`
 3) Create a venv: `python3 -m venv venv` `source venv/bin/activate`
 4) Install dependencies (~200MB for faster-whisper + ctranslate2) `pip install -r requirements.txt`
