@@ -12,8 +12,8 @@
 
 ---
 
-## Setup
-**Raspberry Pi**
+# Setup
+## **Raspberry Pi**
 1) Open terminal on the Raspberry Pi
 2) `git clone <repo> ~/makimate-2026`
 3) `cd ~/makimate-2026`
@@ -21,7 +21,7 @@
 5) `python3 tools/calibrate_motors.py`
 6) Then, go to config/motor_limits.yaml and update limits if needed.
 
-**Development Environment**
+## **Development Environment**
 1) Install VScode: https://code.visualstudio.com/
 2) Install Extension "Remote - SSH" by Microsoft: https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh
 3) On the Raspberry Pi, install and enable SSH: `sudo systemctl enable ssh`, `sudo systemctl start ssh`
@@ -31,11 +31,11 @@
 
 ---
 
-## Git Commands
+# Git Commands
 - `git pull origin master`
 - `git commit -m 'Some message about the change'`
 - `git push origin master`
-### To commit changes in one folder: 
+## To commit changes in one folder: 
 ```
 git add src/makimate_asr/
 git commit -m "Updated ASR (example)"
@@ -44,7 +44,7 @@ git push
 
 ---
 
-## Webpage Dashboard
+# Webpage Dashboard
 The dashboard is used for real-time logging and modification of Makimate's ROS parameters. Additionally, you can change the LLM model and server URL to be used, along with changing what ASR model is used.
 ### Opening the Webpage
 1) In the Pi's terminal, run the following two commands:
@@ -77,7 +77,7 @@ Servers are required for LLM usage and can optionally be used to run larger ASR 
 (to be added)
 
 ---
-## Project Structure
+# Project Structure
 ```
 MakiMate
 |-src
