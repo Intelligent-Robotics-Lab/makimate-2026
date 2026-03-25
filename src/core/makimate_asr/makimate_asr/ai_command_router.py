@@ -4,7 +4,6 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy
 from std_msgs.msg import String, Bool, Float32
-from rclpy.wait_for_message import wait_for_message
 
 from makimate_interfaces.msg import FaceTrackArray
 
@@ -193,23 +192,22 @@ class ASRCommandRouter(Node):
                 self._speak_immediate(self._wake_greeting)
             return
 
-        # Handle "hi" greetings when awake
+        # Sleep phrases — go to sleep
+        if any(phrase in low for phrase in self._sleep_phrases):
+            self.get_logger().info(f"Sleep phrase detected: {text!r}")
+            self._speak_immediate(self._sleep_farewell)
+            self._pending_sleep = True
+            self._send_llm_command(self._reset_command)
+            return
+
+        # Handle "hi/hello/hey" greetings — use same reset+sleep pattern as LLM
         if any(word in low.split() for word in ['hi', 'hello', 'hey']):
             self.get_logger().info("Greeting detected, waiting for speaker recognition...")
-
-            try:
-                success, speaker_msg = wait_for_message(
-                    String,
-                    self,
-                    '/voice/identified_speaker',
-                    time_to_wait=0.5
-                )
-                speaker = speaker_msg.data if success and speaker_msg else "Unknown"
-            except Exception as e:
-                self.get_logger().warn(f"No speaker message received: {e}")
-                speaker = "Unknown"
-
-            response = f"Hi {speaker}!" if speaker and speaker != "Unknown" else "Hi there!"
+            self.current_speaker = "Unknown"
+            self.current_speaker_conf = 0.0
+            time.sleep(0.30)
+            name, conf = self._fuse_identity()
+            response = f"Hi {name}!" if name and conf >= FUSED_THRESHOLD else "Hi there!"
             self.get_logger().info(f"Greeting response: {response}")
             self._speak_immediate(response)
             return
