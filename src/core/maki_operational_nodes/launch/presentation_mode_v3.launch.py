@@ -23,7 +23,6 @@ def generate_launch_description():
               "-p model_size:=base "
               "-p asr_topic:=/asr/text "
               "-p enable_topic:=/asr/enable "
-              "-p server_url:='' "
               "-p no_speech_threshold:=0.6 "
               "-p vad_aggressiveness:=2 "
               "-p silence_ms:=400"
