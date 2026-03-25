@@ -60,9 +60,7 @@ Servers are required for LLM usage and can optionally be used to run larger ASR 
 
 ## ASR Server Setup
 1) Clone the repo on the server.
-2) Navigate to the server folder: `cd ~/makimate-2026/makimate-asr-server`
-3) Create a venv: `python3 -m venv venv` `source venv/bin/activate`
-4) Install dependencies (~200MB for faster-whisper + ctranslate2) `pip install -r requirements.txt`
+3) Run `cd ~/makimate-2026/makimate-asr-server && bash setup_server.sh`
 5) Run the server (base model): `python server.py`; note that if a different port is needed, use: `python server.py --port 8002`. To select a model, use `python server.py --model medium`.
 6) Possible models to use: `tiny`, `base`, `small`, `medium`, `large-v3`, `distil-large-v3`
 7) Port is 8001 (or whatever you choose). Find server ip: `hostname-I`
