@@ -116,6 +116,19 @@ input[type=checkbox]{accent-color:#f56565;cursor:pointer}
       <div id="param-ui"></div>
     </div>
 
+    <!-- Camera feed -->
+    <div class="sec">
+      <h2>&#128247; Camera</h2>
+      <div style="position:relative;line-height:0">
+        <img id="video-feed" src="/video"
+             style="width:100%;border-radius:4px;display:block;background:#080a0e"
+             onerror="onVideoError()">
+        <canvas id="face-canvas"
+                style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;border-radius:4px"></canvas>
+      </div>
+      <div id="cam-status" style="font-size:.65em;color:#4a5568;margin-top:4px"></div>
+    </div>
+
     <!-- Robot Control -->
     <div class="sec">
       <h2>&#9654; Robot Control</h2>
@@ -452,6 +465,11 @@ function connect() {
       const el = document.getElementById('pi-ip');
       el.textContent = `${m.hostname}  ${m.ip}`;
       el.title = `http://${m.ip}:8080`;
+    } else if (m.type === 'face_tracks') {
+      _faceTracks = m.faces;
+      const n = m.faces.length;
+      document.getElementById('cam-status').textContent =
+        n === 0 ? '' : `${n} face${n>1?'s':''} detected`;
     } else if (m.type === 'robot_status') {
       setRobotStatus(m.running, m.detail);
     } else if (m.type === 'build_start') {
@@ -467,6 +485,49 @@ function connect() {
 function send(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
 }
+
+// ───────────────────────────────────────────────────────────────────
+// Camera + face overlay
+// ───────────────────────────────────────────────────────────────────
+let _faceTracks = [];
+
+function onVideoError() {
+  document.getElementById('cam-status').textContent = 'Camera not available';
+}
+
+(function initFaceCanvas() {
+  const img    = document.getElementById('video-feed');
+  const canvas = document.getElementById('face-canvas');
+  const ctx    = canvas.getContext('2d');
+
+  const SRC_W = 640, SRC_H = 480;
+
+  function draw() {
+    canvas.width  = img.clientWidth;
+    canvas.height = img.clientHeight;
+    const sx = img.clientWidth  / SRC_W;
+    const sy = img.clientHeight / SRC_H;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    for (const f of _faceTracks) {
+      const [x, y, w, h] = f.bbox;
+      ctx.strokeStyle = f.speaking ? '#f6e05e' : '#63b3ed';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x*sx, y*sy, w*sx, h*sy);
+      if (f.name && f.name !== 'Unknown') {
+        const label = f.name + (f.speaking ? ' 🗣' : '');
+        ctx.font = '11px Courier New';
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(x*sx, y*sy - 16, tw + 6, 16);
+        ctx.fillStyle = '#63b3ed';
+        ctx.fillText(label, x*sx + 3, y*sy - 3);
+      }
+    }
+    requestAnimationFrame(draw);
+  }
+  requestAnimationFrame(draw);
+})();
 
 // ───────────────────────────────────────────────────────────────────
 // Robot control

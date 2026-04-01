@@ -9,15 +9,20 @@ import threading
 from pathlib import Path
 from typing import Dict, Optional, Set
 
+import cv2
+import numpy as np
+
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
-from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSReliabilityPolicy
+from rclpy.qos import QoSProfile, QoSDurabilityPolicy, QoSHistoryPolicy, QoSReliabilityPolicy
 from rcl_interfaces.msg import Log
+from sensor_msgs.msg import Image
+from makimate_interfaces.msg import FaceTrackArray
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 
 # ------------------------------------------------------------------ #
@@ -69,6 +74,16 @@ class DashboardNode(Node):
         self._last_robot_running = False
         self.create_timer(2.0, self._check_robot_status)
 
+        # Camera / face-track state
+        self._latest_frame: Optional[bytes] = None
+        camera_qos = QoSProfile(
+            reliability=QoSReliabilityPolicy.BEST_EFFORT,
+            history=QoSHistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
+        self.create_subscription(Image, '/camera/image_raw', self._on_image, camera_qos)
+        self.create_subscription(FaceTrackArray, '/maki/face_tracks', self._on_face_tracks, 10)
+
         self.get_logger().info('Dashboard node ready — web UI on :8080')
 
     def set_event_loop(self, loop: asyncio.AbstractEventLoop):
@@ -93,6 +108,36 @@ class DashboardNode(Node):
             self._last_robot_running = running
             payload = json.dumps({"type": "robot_status", "running": running})
             asyncio.run_coroutine_threadsafe(self._broadcast(payload), self._loop)
+
+    def _on_image(self, msg: Image):
+        """Convert incoming camera frame to JPEG and cache it for the MJPEG stream."""
+        try:
+            shape = (msg.height, msg.width, msg.step // msg.width)
+            img = np.frombuffer(msg.data, dtype=np.uint8).reshape(shape)
+            if msg.encoding == 'rgb8':
+                img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            elif msg.encoding == 'bgra8':
+                img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+            _, jpeg = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 65])
+            self._latest_frame = jpeg.tobytes()
+        except Exception:
+            pass
+
+    def _on_face_tracks(self, msg: FaceTrackArray):
+        if self._loop is None:
+            return
+        faces = [
+            {
+                "id": f.id,
+                "name": f.name,
+                "bbox": list(f.bbox),
+                "score": float(f.confidence_score),
+                "speaking": f.is_speaking,
+            }
+            for f in msg.faces
+        ]
+        payload = json.dumps({"type": "face_tracks", "faces": faces})
+        asyncio.run_coroutine_threadsafe(self._broadcast(payload), self._loop)
 
     async def _broadcast(self, text: str):
         dead = set()
@@ -318,6 +363,23 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     async def get_dashboard():
         return html_path.read_text()
+
+    @app.get("/video")
+    async def video_feed():
+        async def generate():
+            while True:
+                frame = node._latest_frame
+                if frame is not None:
+                    yield (
+                        b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+                        + frame
+                        + b"\r\n"
+                    )
+                await asyncio.sleep(0.05)  # ~20 fps cap
+        return StreamingResponse(
+            generate(),
+            media_type="multipart/x-mixed-replace; boundary=frame",
+        )
 
     @app.websocket("/ws")
     async def ws_endpoint(ws: WebSocket):
