@@ -272,6 +272,9 @@ def robot_is_running(node: "DashboardNode") -> bool:
         return node._robot_proc is not None and node._robot_proc.poll() is None
 
 
+ROBOT_LOG = "/tmp/makimate_robot.log"
+
+
 def robot_start(node: "DashboardNode") -> tuple:
     with node._robot_lock:
         if node._robot_proc is not None and node._robot_proc.poll() is None:
@@ -283,11 +286,12 @@ def robot_start(node: "DashboardNode") -> tuple:
                 f"source {repo}/install/setup.bash && "
                 "ros2 launch maki_operational_nodes presentation_mode_v3.launch.py"
             )
+            log_fh = open(ROBOT_LOG, "w")
             node._robot_proc = subprocess.Popen(
-                ["bash", "-c", cmd],
+                ["bash", "-lc", cmd],
                 start_new_session=True,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
+                stdout=log_fh,
+                stderr=log_fh,
             )
             return True, f"Started (pid {node._robot_proc.pid})"
         except Exception as e:
