@@ -6,7 +6,6 @@ Wants=network.target
 [Service]
 Type=simple
 User=__USER__
-SupplementaryGroups=video gpio render audio plugdev dialout
 WorkingDirectory=__REPO_DIR__
 ExecStart=/bin/bash __REPO_DIR__/scripts/start_dashboard.sh
 Restart=on-failure
