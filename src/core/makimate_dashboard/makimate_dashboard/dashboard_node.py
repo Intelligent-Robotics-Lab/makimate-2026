@@ -280,7 +280,7 @@ def robot_start(node: "DashboardNode") -> tuple:
             repo = str(_get_repo_root())
             cmd = (
                 "source /opt/ros/jazzy/setup.bash && "
-                f"source {repo}/install/local_setup.bash && "
+                f"source {repo}/install/setup.bash && "
                 "ros2 launch maki_operational_nodes presentation_mode_v3.launch.py"
             )
             node._robot_proc = subprocess.Popen(
