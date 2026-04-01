@@ -118,6 +118,7 @@ class DashboardNode(Node):
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
             elif msg.encoding == 'bgra8':
                 img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+            img = cv2.rotate(img, cv2.ROTATE_180)
             _, jpeg = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 65])
             self._latest_frame = jpeg.tobytes()
         except Exception:
@@ -269,8 +270,14 @@ def robot_start(node: "DashboardNode") -> tuple:
         if node._robot_proc is not None and node._robot_proc.poll() is None:
             return False, "Already running"
         try:
+            repo = str(_get_repo_root())
+            cmd = (
+                "source /opt/ros/jazzy/setup.bash && "
+                f"source {repo}/install/local_setup.bash && "
+                "ros2 launch maki_operational_nodes presentation_mode_v3.launch.py"
+            )
             node._robot_proc = subprocess.Popen(
-                ["ros2", "launch", "maki_operational_nodes", "presentation_mode_v3.launch.py"],
+                ["bash", "-c", cmd],
                 start_new_session=True,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
