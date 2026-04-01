@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 import asyncio
 import json
+import os
+import signal
 import socket
 import subprocess
 import threading
 from pathlib import Path
-from typing import Dict, Set
+from typing import Dict, Optional, Set
 
 import rclpy
 from rclpy.node import Node
@@ -60,6 +62,13 @@ class DashboardNode(Node):
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL,
         )
         self.create_subscription(Log, '/rosout', self._on_log, rosout_qos)
+
+        # Robot process tracking
+        self._robot_proc: Optional[subprocess.Popen] = None
+        self._robot_lock = threading.Lock()
+        self._last_robot_running = False
+        self.create_timer(2.0, self._check_robot_status)
+
         self.get_logger().info('Dashboard node ready — web UI on :8080')
 
     def set_event_loop(self, loop: asyncio.AbstractEventLoop):
@@ -75,6 +84,15 @@ class DashboardNode(Node):
             "msg": msg.msg,
         })
         asyncio.run_coroutine_threadsafe(self._broadcast(payload), self._loop)
+
+    def _check_robot_status(self):
+        if self._loop is None:
+            return
+        running = robot_is_running(self)
+        if running != self._last_robot_running:
+            self._last_robot_running = running
+            payload = json.dumps({"type": "robot_status", "running": running})
+            asyncio.run_coroutine_threadsafe(self._broadcast(payload), self._loop)
 
     async def _broadcast(self, text: str):
         dead = set()
@@ -192,6 +210,51 @@ def get_local_ip() -> str:
         return "unknown"
 
 
+def _get_repo_root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
+def robot_is_running(node: "DashboardNode") -> bool:
+    with node._robot_lock:
+        return node._robot_proc is not None and node._robot_proc.poll() is None
+
+
+def robot_start(node: "DashboardNode") -> tuple:
+    with node._robot_lock:
+        if node._robot_proc is not None and node._robot_proc.poll() is None:
+            return False, "Already running"
+        try:
+            node._robot_proc = subprocess.Popen(
+                ["ros2", "launch", "maki_operational_nodes", "presentation_mode_v3.launch.py"],
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return True, f"Started (pid {node._robot_proc.pid})"
+        except Exception as e:
+            return False, str(e)
+
+
+def robot_stop(node: "DashboardNode") -> tuple:
+    with node._robot_lock:
+        proc = node._robot_proc
+        if proc is None or proc.poll() is not None:
+            node._robot_proc = None
+            return False, "Not running"
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            proc.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            except Exception:
+                pass
+        except Exception:
+            pass
+        node._robot_proc = None
+        return True, "Stopped"
+
+
 def fetch_all_params() -> dict:
     """Bulk-read all registered params. Skips nodes that are not running."""
     result = {}
@@ -209,6 +272,40 @@ def fetch_all_params() -> dict:
 # ------------------------------------------------------------------ #
 # FastAPI app
 # ------------------------------------------------------------------ #
+
+async def _run_cmd_streamed(node: "DashboardNode", cmd: list, cwd: str, label: str) -> bool:
+    """Run a shell command and stream its output line-by-line to all WS clients."""
+    await node._broadcast(json.dumps({"type": "build_start", "cmd": label}))
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=cwd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        async for raw in proc.stdout:
+            text = raw.decode("utf-8", errors="ignore").rstrip()
+            if text:
+                await node._broadcast(json.dumps({"type": "build_line", "text": text}))
+        await proc.wait()
+        ok = proc.returncode == 0
+        await node._broadcast(json.dumps({"type": "build_done", "cmd": label, "ok": ok}))
+        return ok
+    except Exception as e:
+        await node._broadcast(json.dumps({"type": "build_done", "cmd": label, "ok": False, "error": str(e)}))
+        return False
+
+
+async def _pull_and_rebuild(node: "DashboardNode", repo: str):
+    ok = await _run_cmd_streamed(node, ["git", "pull"], repo, "git pull")
+    if ok:
+        ok = await _run_cmd_streamed(node, ["colcon", "build", "--symlink-install"], repo, "colcon build")
+    if ok:
+        await node._broadcast(json.dumps({
+            "type": "build_line",
+            "text": "Update complete — use Stop → Start to apply changes.",
+        }))
+
 
 def create_app(node: DashboardNode) -> FastAPI:
     app = FastAPI()
@@ -258,6 +355,7 @@ async def _send_initial_state(ws: WebSocket, node: DashboardNode):
             await ws.send_text(json.dumps({"type": "volume_current", "value": vol}))
         ip = await loop.run_in_executor(None, get_local_ip)
         await ws.send_text(json.dumps({"type": "system_info", "ip": ip, "hostname": socket.gethostname()}))
+        await ws.send_text(json.dumps({"type": "robot_status", "running": robot_is_running(node)}))
     except Exception:
         pass
 
@@ -307,6 +405,26 @@ async def _handle(ws: WebSocket, node: DashboardNode, msg: dict):
             await ws.send_text(json.dumps({"type": "volume_ok", "value": actual}))
         else:
             await ws.send_text(json.dumps({"type": "volume_fail", "detail": detail}))
+
+    elif t == "robot_start":
+        ok, detail = await loop.run_in_executor(None, robot_start, node)
+        await node._broadcast(json.dumps({"type": "robot_status", "running": ok, "detail": detail}))
+
+    elif t == "robot_stop":
+        await loop.run_in_executor(None, robot_stop, node)
+        await node._broadcast(json.dumps({"type": "robot_status", "running": False}))
+
+    elif t == "git_pull":
+        repo = str(_get_repo_root())
+        asyncio.create_task(_run_cmd_streamed(node, ["git", "pull"], repo, "git pull"))
+
+    elif t == "rebuild":
+        repo = str(_get_repo_root())
+        asyncio.create_task(_run_cmd_streamed(node, ["colcon", "build", "--symlink-install"], repo, "colcon build"))
+
+    elif t == "pull_rebuild":
+        repo = str(_get_repo_root())
+        asyncio.create_task(_pull_and_rebuild(node, repo))
 
     elif t == "server_config":
         for key in ("llm_server_url", "llm_model", "whisper_server_url", "whisper_model"):
