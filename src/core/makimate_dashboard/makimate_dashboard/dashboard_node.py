@@ -76,6 +76,7 @@ class DashboardNode(Node):
 
         # Camera / face-track state
         self._latest_frame: Optional[bytes] = None
+        self._last_face_broadcast: float = 0.0
         camera_qos = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
             history=QoSHistoryPolicy.KEEP_LAST,
@@ -119,7 +120,7 @@ class DashboardNode(Node):
             elif msg.encoding == 'bgra8':
                 img = cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
             img = cv2.rotate(img, cv2.ROTATE_180)
-            _, jpeg = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 65])
+            _, jpeg = cv2.imencode('.jpg', img, [cv2.IMWRITE_JPEG_QUALITY, 50])
             self._latest_frame = jpeg.tobytes()
         except Exception:
             pass
@@ -127,6 +128,12 @@ class DashboardNode(Node):
     def _on_face_tracks(self, msg: FaceTrackArray):
         if self._loop is None:
             return
+        # Throttle to 10 fps — at 30 fps this floods the asyncio event loop
+        import time as _time
+        now = _time.monotonic()
+        if now - self._last_face_broadcast < 0.1:
+            return
+        self._last_face_broadcast = now
         faces = [
             {
                 "id": f.id,
@@ -280,7 +287,7 @@ def robot_start(node: "DashboardNode") -> tuple:
                 ["bash", "-c", cmd],
                 start_new_session=True,
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
             )
             return True, f"Started (pid {node._robot_proc.pid})"
         except Exception as e:
@@ -326,10 +333,10 @@ def fetch_all_params() -> dict:
 # ------------------------------------------------------------------ #
 
 async def _video_broadcast_loop(node: "DashboardNode"):
-    """Broadcast camera frames to all WS clients at ~10 fps."""
+    """Broadcast camera frames to all WS clients at ~5 fps."""
     import base64
     while True:
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.2)
         if node._latest_frame is None or not node._ws_clients:
             continue
         b64 = base64.b64encode(node._latest_frame).decode("ascii")
