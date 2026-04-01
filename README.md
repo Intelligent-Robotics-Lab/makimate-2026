@@ -58,11 +58,9 @@ The dashboard is used for real-time logging and modification of Makimate's ROS p
 # Server Setup
 Servers are required for LLM usage and can optionally be used to run larger ASR models as well. 
 
-## ASR Server Setup
-1) Clone the repo on the server.
-2) Navigate to the server folder: `cd ~/makimate-2026/makimate-asr-server`
-3) Create a venv: `python3 -m venv venv` `source venv/bin/activate`
-4) Install dependencies (~200MB for faster-whisper + ctranslate2) `pip install -r requirements.txt`
+## Linux ASR Server Setup
+1) Clone the repo: git clone https://github.com/Intelligent-Robotics-Lab/makimate-2026.git
+3) Run `cd ~/makimate-2026/makimate-asr-server && bash setup_server.sh`
 5) Run the server (base model): `python server.py`; note that if a different port is needed, use: `python server.py --port 8002`. To select a model, use `python server.py --model medium`.
 6) Possible models to use: `tiny`, `base`, `small`, `medium`, `large-v3`, `distil-large-v3`
 7) Port is 8001 (or whatever you choose). Find server ip: `hostname-I`
@@ -73,8 +71,39 @@ Servers are required for LLM usage and can optionally be used to run larger ASR 
 12) Click "Check Server" to ensure that the server is operational and the correct ASR model is loaded.
 13) To use the local Pi setup, clear the Whisper URL field and click "Apply Whisper".
 
-## LLM Server Setup
-(to be added)
+## Linux LLM Server Setup
+1) Clone the repo: `git clone https://github.com/Intelligent-Robotics-Lab/makimate-2026.git`
+2) Run setup: `cd ~/makimate-2026/makimate-llm-server && bash setup_server.sh`
+3) Start Ollama in one terminal: `OLLAMA_HOST=0.0.0.0 ollama serve`
+4) Start the server in a second terminal:
+      `cd ~/makimate-2026/makimate-llm-server/src`
+      `source ../venv/bin/activate`
+      `uvicorn server_llm:app --host 0.0.0.0 --port 8000`
+5) Find your server IP: `hostname -I`
+6) Test: `curl -X POST http://localhost:8000/chat/stream -H "Content-Type: application/json" -d '{"message": "hello"}'`
+7) Enter the LLM URL in the Pi dashboard: `http://<server-ip>:8000`
+8) Click "Apply LLM"
+
+## Windows LLM Server Setup
+1) Install pre-requisites if not already installed:
+    - Git: https://git-scm.com/download/win
+    - Python 3.10+: https://www.python.org/downloads — select "Add Python to PATH"
+    - Ollama: https://ollama.com
+2) Clone the repo. Open Powershell:
+    `git clone https://github.com/Intelligent-Robotics-Lab/makimate-2026.git`
+    `cd makimate-2026\makimate-llm-server`
+3) Run setup: `.\setup_server.ps1`. If you get an execution policy error, first run: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+4) Restart Ollama after setup. In Powershell: `ollama serve`
+5) Start the server in a second Powershell window:
+    `cd makimate-2026\makimate-llm-server\src`
+    `..\venv\Scripts\activate`
+    `uvicorn server_llm:app --host 0.0.0.0 --port 8000`
+6) Allow firewall access when prompted
+7) Find your ip: `ipconfig`; look for IPv4 address.
+8) Test: open a browser and go to http://localhost:8000/docs
+9) Enter the LLM URL in the Pi dashboard: http://<your-ip>:8000
+10) Click "Apply LLM"
+
 
 ---
 # Project Structure
