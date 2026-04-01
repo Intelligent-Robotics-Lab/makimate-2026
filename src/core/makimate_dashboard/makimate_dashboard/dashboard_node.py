@@ -77,6 +77,7 @@ class DashboardNode(Node):
         # Camera / face-track state
         self._latest_frame: Optional[bytes] = None
         self._last_face_broadcast: float = 0.0
+        self._last_image_process: float = 0.0
         camera_qos = QoSProfile(
             reliability=QoSReliabilityPolicy.BEST_EFFORT,
             history=QoSHistoryPolicy.KEEP_LAST,
@@ -111,7 +112,12 @@ class DashboardNode(Node):
             asyncio.run_coroutine_threadsafe(self._broadcast(payload), self._loop)
 
     def _on_image(self, msg: Image):
-        """Convert incoming camera frame to JPEG and cache it for the MJPEG stream."""
+        """Convert incoming camera frame to JPEG and cache it for the WS stream (5 fps max)."""
+        import time as _time
+        now = _time.monotonic()
+        if now - self._last_image_process < 0.2:
+            return
+        self._last_image_process = now
         try:
             shape = (msg.height, msg.width, msg.step // msg.width)
             img = np.frombuffer(msg.data, dtype=np.uint8).reshape(shape)
@@ -284,6 +290,7 @@ def robot_start(node: "DashboardNode") -> tuple:
             cmd = (
                 "source /opt/ros/jazzy/setup.bash && "
                 f"source {repo}/install/setup.bash && "
+                "if [ -f ~/maki_ws/install/setup.bash ]; then source ~/maki_ws/install/setup.bash; fi && "
                 "ros2 launch maki_operational_nodes presentation_mode_v3.launch.py"
             )
             log_fh = open(ROBOT_LOG, "w")
