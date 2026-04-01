@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import asyncio
 import json
+import socket
 import subprocess
 import threading
 from pathlib import Path
@@ -145,6 +146,52 @@ def _whisper_server_set_model(server_url: str, model: str, node) -> None:
         node.get_logger().warn(f"Could not reach ASR server to set model: {e}")
 
 
+def set_volume(value: int) -> tuple:
+    """Set ALSA master volume. Returns (success, message, actual_value)."""
+    value = max(0, min(100, value))
+    for control in ('Master', 'PCM', 'Speaker'):
+        try:
+            r = subprocess.run(
+                ['amixer', '-q', 'sset', control, f'{value}%'],
+                capture_output=True, text=True, timeout=3,
+            )
+            if r.returncode == 0:
+                return True, control, value
+        except Exception:
+            continue
+    return False, 'No suitable ALSA control found (tried Master, PCM, Speaker)', value
+
+
+def get_volume() -> int:
+    """Read current ALSA master volume (0-100). Returns -1 on failure."""
+    for control in ('Master', 'PCM', 'Speaker'):
+        try:
+            r = subprocess.run(
+                ['amixer', 'sget', control],
+                capture_output=True, text=True, timeout=3,
+            )
+            if r.returncode == 0:
+                import re
+                m = re.search(r'\[(\d+)%\]', r.stdout)
+                if m:
+                    return int(m.group(1))
+        except Exception:
+            continue
+    return -1
+
+
+def get_local_ip() -> str:
+    """Return the Pi's primary LAN IP address."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "unknown"
+
+
 def fetch_all_params() -> dict:
     """Bulk-read all registered params. Skips nodes that are not running."""
     result = {}
@@ -206,6 +253,11 @@ async def _send_initial_state(ws: WebSocket, node: DashboardNode):
     try:
         await ws.send_text(json.dumps({"type": "param_all", "params": params}))
         await ws.send_text(json.dumps({"type": "server_config", "config": SERVER_CONFIG}))
+        vol = await loop.run_in_executor(None, get_volume)
+        if vol >= 0:
+            await ws.send_text(json.dumps({"type": "volume_current", "value": vol}))
+        ip = await loop.run_in_executor(None, get_local_ip)
+        await ws.send_text(json.dumps({"type": "system_info", "ip": ip, "hostname": socket.gethostname()}))
     except Exception:
         pass
 
@@ -247,6 +299,14 @@ async def _handle(ws: WebSocket, node: DashboardNode, msg: dict):
             "param": msg["param"],
             "value": val,
         }))
+
+    elif t == "volume_set":
+        value = int(msg.get("value", 80))
+        ok, detail, actual = await loop.run_in_executor(None, set_volume, value)
+        if ok:
+            await ws.send_text(json.dumps({"type": "volume_ok", "value": actual}))
+        else:
+            await ws.send_text(json.dumps({"type": "volume_fail", "detail": detail}))
 
     elif t == "server_config":
         for key in ("llm_server_url", "llm_model", "whisper_server_url", "whisper_model"):

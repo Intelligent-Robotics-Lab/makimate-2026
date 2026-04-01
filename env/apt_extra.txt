@@ -23,6 +23,7 @@ containerd.io
 # Audio / TTS / mic
 portaudio19-dev
 libportaudio2
+python3-pyaudio
 pavucontrol
 espeak-ng
 ffmpeg
@@ -35,6 +36,10 @@ python3-opencv
 i2c-tools
 v4l-utils
 usbutils
+
+# mDNS — makes the Pi reachable as maki.local on the local network
+avahi-daemon
+libnss-mdns
 
 # ROS tooling (if not already covered via rosdep + meta-packages)
 ros-jazzy-desktop

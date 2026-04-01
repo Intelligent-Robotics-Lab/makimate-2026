@@ -1,0 +1,11 @@
+# MakiMate LLM Server — Python dependencies.
+# Model inference is handled by Ollama (installed separately — see setup_server.sh).
+#
+# Install:
+#   pip install -r requirements_minimal.txt
+
+ollama>=0.3.0
+fastapi>=0.111.0
+uvicorn>=0.29.0
+pydantic>=2.0.0
+rich>=13.0.0

@@ -104,10 +104,10 @@ class MakiDxl6(Node):
         update_rate = float(self.get_parameter('update_rate').value)
 
         # ----------------------------------------
-        # SMOOTHING STATE
+        # SMOOTHING STATE — seeded from actual motor positions after torque enable
         # ----------------------------------------
-        self.current_positions = [0.0] * len(self.ids)  # Current smooth positions (degrees)
-        self.target_positions = [0.0] * len(self.ids)   # Target positions (degrees)
+        self.current_positions = [0.0] * len(self.ids)
+        self.target_positions = [0.0] * len(self.ids)
 
         # ----------------------------------------
         # DYNAMIXEL SDK SETUP
@@ -115,6 +115,7 @@ class MakiDxl6(Node):
         self.PROTOCOL_VERSION = 2.0
         self.ADDR_TORQUE_ENABLE = 64
         self.ADDR_GOAL_POSITION = 116
+        self.ADDR_PRESENT_POSITION = 132
         self.TORQUE_ENABLE = 1
         self.TORQUE_DISABLE = 0
 
@@ -151,6 +152,23 @@ class MakiDxl6(Node):
                 )
             else:
                 self.get_logger().info(f"Torque enabled for ID {dxl_id}")
+
+        # ----------------------------------------
+        # SEED SMOOTHING STATE from actual present positions
+        # so the first update doesn't snap to neutral.
+        # ----------------------------------------
+        for idx, dxl_id in enumerate(self.ids):
+            ticks, result, _ = self.packet_handler.read4ByteTxRx(
+                self.port_handler, dxl_id, self.ADDR_PRESENT_POSITION
+            )
+            if result == COMM_SUCCESS:
+                rel_deg = (ticks - self.neutral_ticks[dxl_id]) / TICKS_PER_DEG
+                self.current_positions[idx] = rel_deg
+                self.target_positions[idx] = rel_deg
+            else:
+                self.get_logger().warn(
+                    f"Could not read present position for ID {dxl_id} — starting from neutral"
+                )
 
         # ----------------------------------------
         # ROS SUBSCRIBER & SMOOTH UPDATE TIMER

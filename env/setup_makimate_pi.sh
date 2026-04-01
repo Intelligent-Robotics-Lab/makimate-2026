@@ -32,7 +32,7 @@ fi
 
 # ---- Helper -----------------------------------------------------------------
 step() { echo; echo ">>> STEP $1/$TOTAL_STEPS: $2"; }
-TOTAL_STEPS=7
+TOTAL_STEPS=10
 
 # =============================================================================
 # Step 1 — System apt packages
@@ -61,9 +61,26 @@ sudo apt-get install -y \
   || true
 
 # =============================================================================
-# Step 2 — udev rules (ReSpeaker + Dynamixel)
+# Step 2 — Hostname (maki.local mDNS)
 # =============================================================================
-step 2 "Setting up udev rules"
+step 2 "Setting hostname to 'maki' (accessible as maki.local)"
+CURRENT_HOST=$(hostname)
+if [[ "$CURRENT_HOST" != "maki" ]]; then
+  sudo hostnamectl set-hostname maki
+  # Update /etc/hosts so the new hostname resolves locally
+  sudo sed -i "s/\b${CURRENT_HOST}\b/maki/g" /etc/hosts
+  echo "  Hostname changed from '$CURRENT_HOST' to 'maki'."
+  echo "  NOTE: Changes take effect after reboot."
+else
+  echo "  Hostname already 'maki' — skipping."
+fi
+sudo systemctl enable avahi-daemon
+sudo systemctl start avahi-daemon
+
+# =============================================================================
+# Step 3 — udev rules (ReSpeaker + Dynamixel)
+# =============================================================================
+step 3 "Setting up udev rules"
 bash "$REPO_DIR/scripts/install_respeaker_udev.sh"
 
 # Dynamixel USB serial rule (ttyACM / ttyUSB access without sudo)
@@ -84,7 +101,7 @@ fi
 # =============================================================================
 # Step 3 — ROS 2 dependencies via rosdep
 # =============================================================================
-step 3 "Installing ROS 2 package dependencies via rosdep"
+step 4 "Installing ROS 2 package dependencies via rosdep"
 if [[ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]]; then
   sudo rosdep init || true
 fi
@@ -94,7 +111,7 @@ rosdep install --from-paths src --ignore-src -y --rosdistro jazzy
 # =============================================================================
 # Step 4 — Python dependencies (system-wide for ROS node compatibility)
 # =============================================================================
-step 4 "Installing Python dependencies"
+step 5 "Installing Python dependencies"
 # Use system Python so ROS nodes work without venv activation.
 # --break-system-packages is required on Ubuntu 24.04.
 sudo /usr/bin/python3 -m pip install \
@@ -104,7 +121,7 @@ sudo /usr/bin/python3 -m pip install \
 # =============================================================================
 # Step 5 — Piper TTS binary
 # =============================================================================
-step 5 "Extracting Piper TTS binary"
+step 6 "Extracting Piper TTS binary"
 PIPER_DIR="$REPO_DIR/piper_bin"
 PIPER_ARCHIVE="$PIPER_DIR/piper_linux_aarch64.tar.gz"
 PIPER_BIN="$PIPER_DIR/piper/piper"
@@ -124,7 +141,7 @@ fi
 # =============================================================================
 # Step 6 — Vosk ASR models
 # =============================================================================
-step 6 "Checking Vosk models"
+step 7 "Checking Vosk models"
 VOSK_DIR="$HOME/vosk_models"
 mkdir -p "$VOSK_DIR"
 
@@ -156,9 +173,54 @@ else
 fi
 
 # =============================================================================
-# Step 7 — Build ROS workspace
+# Step 7 — ALSA dsnoop config (shared mic access for Vosk + Whisper)
 # =============================================================================
-step 7 "Building ROS workspace"
+step 8 "Writing ~/.asoundrc (dsnoop for ReSpeaker shared capture)"
+ASOUNDRC="$HOME/.asoundrc"
+if [[ -f "$ASOUNDRC" ]] && grep -q "respeaker_shared" "$ASOUNDRC"; then
+  echo "  ~/.asoundrc already contains respeaker_shared — skipping."
+else
+  # Append (or create) the dsnoop stanza.  Safe to append if file has other content.
+  cat >> "$ASOUNDRC" << 'ASOUNDRC_EOF'
+
+# MakiMate: shared ReSpeaker capture — lets Vosk and Whisper read simultaneously.
+pcm.respeaker_shared {
+    type dsnoop
+    ipc_key 7890
+    slave {
+        pcm "hw:1,0"
+        channels 1
+        rate 16000
+        format S16_LE
+        period_size 320
+        buffer_size 6400
+    }
+}
+ASOUNDRC_EOF
+  echo "  Written respeaker_shared dsnoop to $ASOUNDRC"
+fi
+
+# =============================================================================
+# Step 9 — Install systemd service (auto-start on boot)
+# =============================================================================
+step 9 "Installing makimate.service (auto-start on boot)"
+chmod +x "$REPO_DIR/scripts/start_makimate.sh"
+SERVICE_SRC="$REPO_DIR/env/makimate.service"
+SERVICE_DST="/etc/systemd/system/makimate.service"
+sed \
+  -e "s|__USER__|$USER|g" \
+  -e "s|__REPO_DIR__|$REPO_DIR|g" \
+  "$SERVICE_SRC" | sudo tee "$SERVICE_DST" > /dev/null
+sudo systemctl daemon-reload
+sudo systemctl enable makimate.service
+echo "  makimate.service installed and enabled."
+echo "  Start now:  sudo systemctl start makimate"
+echo "  View logs:  journalctl -u makimate -f"
+
+# =============================================================================
+# Step 10 — Build ROS workspace
+# =============================================================================
+step 10 "Building ROS workspace"
 source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install 2>&1 | tail -20
 
@@ -167,10 +229,15 @@ echo "======================================================================"
 echo " Setup complete!"
 echo "======================================================================"
 echo
-echo " To start MakiMate, open a new terminal and run:"
+echo " MakiMate will start automatically on next boot (makimate.service)."
+echo " To start it now without rebooting:"
+echo "   sudo systemctl start makimate"
+echo " View live logs:"
+echo "   journalctl -u makimate -f"
+echo " To start manually instead:"
 echo "   source /opt/ros/jazzy/setup.bash"
 echo "   source $REPO_DIR/install/setup.bash"
-echo "   ros2 launch makimate_bringup presentation_mode_launch_v2.py"
+echo "   ros2 launch maki_operational_nodes presentation_mode_v3.launch.py"
 echo
 echo " If this is a NEW robot, calibrate motors first:"
 echo "   python3 $REPO_DIR/tools/calibrate_motors.py"

@@ -85,6 +85,7 @@ input[type=checkbox]{accent-color:#f56565;cursor:pointer}
   <h1>&#129302; MakiMate Dashboard</h1>
   <span id="conn-status" class="err">Disconnected</span>
   <span class="spacer"></span>
+  <span id="pi-ip" style="font-size:.72em;color:#718096"></span>
   <span id="log-count">0 logs</span>
 </header>
 
@@ -113,6 +114,18 @@ input[type=checkbox]{accent-color:#f56565;cursor:pointer}
     <div class="sec">
       <h2>&#9881; Parameters</h2>
       <div id="param-ui"></div>
+    </div>
+
+    <!-- Volume -->
+    <div class="sec">
+      <h2>&#128266; Volume</h2>
+      <div class="pr">
+        <label>Speaker Output</label>
+        <input type="range" id="vol-slider" min="0" max="100" step="1" value="80"
+               oninput="onVolSlider(this.value)">
+        <span class="vd" id="vol-display">80%</span>
+      </div>
+      <div id="vol-status" style="font-size:.68em;color:#718096;margin-top:2px;min-height:1.2em"></div>
     </div>
 
     <!-- Server config -->
@@ -260,6 +273,24 @@ function flashBtn(node, pn, ok) {
 }
 
 // ───────────────────────────────────────────────────────────────────
+// Volume
+// ───────────────────────────────────────────────────────────────────
+let volTimer = null;
+function onVolSlider(v) {
+  document.getElementById('vol-display').textContent = v + '%';
+  clearTimeout(volTimer);
+  volTimer = setTimeout(() => {
+    send({type: 'volume_set', value: parseInt(v)});
+  }, 120);  // debounce: send 120ms after user stops dragging
+}
+
+function setVolStatus(ok, msg) {
+  const el = document.getElementById('vol-status');
+  el.textContent = msg;
+  el.style.color = ok ? '#68d391' : '#fc8181';
+}
+
+// ───────────────────────────────────────────────────────────────────
 // Server config
 // ───────────────────────────────────────────────────────────────────
 function applyServer(which) {
@@ -391,6 +422,17 @@ function connect() {
       console.warn('param_set_fail:', m.detail);
     } else if (m.type === 'server_config') {
       applyServerConfigUI(m.config);
+    } else if (m.type === 'volume_ok') {
+      setVolStatus(true, `✓ Volume set to ${m.value}%`);
+    } else if (m.type === 'volume_fail') {
+      setVolStatus(false, `✗ ${m.detail}`);
+    } else if (m.type === 'volume_current') {
+      document.getElementById('vol-slider').value = m.value;
+      document.getElementById('vol-display').textContent = m.value + '%';
+    } else if (m.type === 'system_info') {
+      const el = document.getElementById('pi-ip');
+      el.textContent = `${m.hostname}  ${m.ip}`;
+      el.title = `http://${m.ip}:8080`;
     }
   };
 }

@@ -204,11 +204,9 @@ class ASRCommandRouter(Node):
             self._send_llm_command(self._reset_command)
             return
 
-        # Handle "hi/hello/hey" greetings — use same reset+sleep pattern as LLM
+        # Handle "hi/hello/hey" greetings — wait briefly for any fresher embedding
         if any(word in low.split() for word in ['hi', 'hello', 'hey']):
             self.get_logger().info("Greeting detected, waiting for speaker recognition...")
-            self.current_speaker = "Unknown"
-            self.current_speaker_conf = 0.0
             time.sleep(0.30)
             name, conf = self._fuse_identity()
             response = f"Hi {name}!" if name and conf >= FUSED_THRESHOLD else "Hi there!"
@@ -217,10 +215,7 @@ class ASRCommandRouter(Node):
             return
 
         # Normal conversation → forward to LLM with identity context.
-        # Reset stale identity from previous utterance, then wait for this utterance's
-        # speaker recognition result (arrives ~170ms after ASR based on observed timing).
-        self.current_speaker = "Unknown"
-        self.current_speaker_conf = 0.0
+        # Wait briefly for any fresher speaker embedding to arrive.
         time.sleep(0.30)
 
         name, conf = self._fuse_identity()

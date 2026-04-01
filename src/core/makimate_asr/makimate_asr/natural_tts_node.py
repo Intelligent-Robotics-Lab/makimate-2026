@@ -169,6 +169,10 @@ class NaturalTTS(Node):
 
             stripped = chunk.strip()
 
+            # A chunk with no leading whitespace is a sub-word continuation token
+            # (e.g. "abus" after " syll" → "syllabus"). Don't insert a space.
+            is_continuation = bool(self._buffer) and bool(chunk) and chunk[0] not in (' ', '\t', '\n')
+
             # Punctuation tokens we want to attach directly to previous word
             punct_tokens = {
                 ",",
@@ -206,9 +210,11 @@ class NaturalTTS(Node):
                 # Attach contractions like "'t", "'s" to the previous word
                 self._buffer = self._buffer.rstrip() + stripped
             else:
-                # Normal word-ish chunk: ensure exactly one space before it
-                if self._buffer and not self._buffer.endswith(" "):
-                    self._buffer += " "
+                # Normal word-ish chunk: add a space before it unless it's a
+                # sub-word continuation token (no leading space in the original).
+                if not is_continuation:
+                    if self._buffer and not self._buffer.endswith(" "):
+                        self._buffer += " "
                 self._buffer += stripped
 
             # Decide if we should flush a sentence from the buffer
