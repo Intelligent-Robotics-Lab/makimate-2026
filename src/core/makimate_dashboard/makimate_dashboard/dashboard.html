@@ -120,9 +120,8 @@ input[type=checkbox]{accent-color:#f56565;cursor:pointer}
     <div class="sec">
       <h2>&#128247; Camera</h2>
       <div style="position:relative;line-height:0">
-        <img id="video-feed" src="/video"
-             style="width:100%;border-radius:4px;display:block;background:#080a0e"
-             onerror="onVideoError()">
+        <img id="video-feed"
+             style="width:100%;border-radius:4px;display:none;background:#080a0e">
         <canvas id="face-canvas"
                 style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;border-radius:4px"></canvas>
       </div>
@@ -465,6 +464,8 @@ function connect() {
       const el = document.getElementById('pi-ip');
       el.textContent = `${m.hostname}  ${m.ip}`;
       el.title = `http://${m.ip}:8080`;
+    } else if (m.type === 'video_frame') {
+      onVideoFrame(m.data);
     } else if (m.type === 'face_tracks') {
       _faceTracks = m.faces;
       const n = m.faces.length;
@@ -491,8 +492,10 @@ function send(obj) {
 // ───────────────────────────────────────────────────────────────────
 let _faceTracks = [];
 
-function onVideoError() {
-  document.getElementById('cam-status').textContent = 'Camera not available';
+function onVideoFrame(b64) {
+  const img = document.getElementById('video-feed');
+  img.src = 'data:image/jpeg;base64,' + b64;
+  img.style.display = 'block';
 }
 
 (function initFaceCanvas() {

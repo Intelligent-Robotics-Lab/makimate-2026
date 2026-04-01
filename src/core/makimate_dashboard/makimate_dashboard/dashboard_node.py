@@ -22,7 +22,7 @@ from makimate_interfaces.msg import FaceTrackArray
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse
 
 
 # ------------------------------------------------------------------ #
@@ -318,6 +318,17 @@ def fetch_all_params() -> dict:
 # FastAPI app
 # ------------------------------------------------------------------ #
 
+async def _video_broadcast_loop(node: "DashboardNode"):
+    """Broadcast camera frames to all WS clients at ~10 fps."""
+    import base64
+    while True:
+        await asyncio.sleep(0.1)
+        if node._latest_frame is None or not node._ws_clients:
+            continue
+        b64 = base64.b64encode(node._latest_frame).decode("ascii")
+        await node._broadcast(json.dumps({"type": "video_frame", "data": b64}))
+
+
 async def _run_cmd_streamed(node: "DashboardNode", cmd: list, cwd: str, label: str) -> bool:
     """Run a shell command and stream its output line-by-line to all WS clients."""
     await node._broadcast(json.dumps({"type": "build_start", "cmd": label}))
@@ -359,27 +370,12 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.on_event("startup")
     async def _startup():
         node.set_event_loop(asyncio.get_event_loop())
+        asyncio.create_task(_video_broadcast_loop(node))
 
     @app.get("/", response_class=HTMLResponse)
     async def get_dashboard():
         return html_path.read_text()
 
-    @app.get("/video")
-    async def video_feed():
-        async def generate():
-            while True:
-                frame = node._latest_frame
-                if frame is not None:
-                    yield (
-                        b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
-                        + frame
-                        + b"\r\n"
-                    )
-                await asyncio.sleep(0.05)  # ~20 fps cap
-        return StreamingResponse(
-            generate(),
-            media_type="multipart/x-mixed-replace; boundary=frame",
-        )
 
     @app.websocket("/ws")
     async def ws_endpoint(ws: WebSocket):
