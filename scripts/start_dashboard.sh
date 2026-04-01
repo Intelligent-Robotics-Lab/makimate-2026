@@ -5,4 +5,4 @@ set -e
 source /opt/ros/jazzy/setup.bash
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$REPO_DIR/install/local_setup.bash"
-exec ros2 run makimate_dashboard makimate_dashboard
+exec ros2 run makimate_dashboard dashboard
