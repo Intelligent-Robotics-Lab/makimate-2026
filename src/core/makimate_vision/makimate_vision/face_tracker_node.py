@@ -151,8 +151,8 @@ class FaceTracker(Node):
         self.declare_parameter('speaking_variance_threshold', 10.0) # px^2 -> is_speaking
 
         # Tracker parameters
-        self.declare_parameter('iou_threshold',            0.3)
-        self.declare_parameter('max_missed_frames',        10)
+        self.declare_parameter('iou_threshold',            0.15)
+        self.declare_parameter('max_missed_frames',        20)
 
         # face_recognition match distance threshold (lower = stricter)
         self.declare_parameter('recognition_threshold',    0.55)
@@ -233,6 +233,11 @@ class FaceTracker(Node):
         self._last_detect_time: float = 0.0
         self._last_recognition_time: float = 0.0
         self._speaking_states: Dict[int, bool] = {}  # track_id -> last logged speaking state
+        # Grace period: republish last good bbox for up to 0.5 s after face disappears
+        # instead of immediately sending [-1,-1,-1,-1].  This smooths over frames where
+        # MediaPipe briefly misses the face.
+        self._last_valid_bbox: List[int] = [-1, -1, -1, -1]
+        self._last_valid_bbox_time: float = 0.0
 
         # ------------------------------------------------------------------ #
         # cv_bridge
@@ -337,7 +342,7 @@ class FaceTracker(Node):
         t0 = time.monotonic()
         detections = self._detect_faces(frame, w_img, h_img)
         t1 = time.monotonic()
-        if t1 - t0 > 0.05:
+        if t1 - t0 > 0.15:
             self.get_logger().warn(f'[TIMING] detect_faces: {(t1-t0)*1000:.0f}ms')
 
         # ------------------------------------------------------------------
@@ -428,10 +433,18 @@ class FaceTracker(Node):
         # ------------------------------------------------------------------
         # Step 6: Publish best face on /maki/largest_face_bbox
         # Keeps face_to_maki.py working without any changes.
+        # Grace period: if MediaPipe briefly misses the face, hold the last
+        # known bbox for up to 0.5 s before signalling "no face".  This
+        # prevents the maki_behavior no-face counter from spiking on a
+        # single missed detection frame.
         # ------------------------------------------------------------------
         bbox_msg = Int32MultiArray()
         if scored_tracks:
             bbox_msg.data = list(scored_tracks[0].bbox)
+            self._last_valid_bbox = list(scored_tracks[0].bbox)
+            self._last_valid_bbox_time = now
+        elif (now - self._last_valid_bbox_time) < 0.5:
+            bbox_msg.data = self._last_valid_bbox  # hold last good position
         else:
             bbox_msg.data = [-1, -1, -1, -1]
         self.pub_bbox.publish(bbox_msg)

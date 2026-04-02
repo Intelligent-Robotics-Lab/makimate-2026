@@ -185,6 +185,8 @@ class ASRCommandRouter(Node):
         if not text:
             return
 
+        self.get_logger().info(f"[ASR] Heard: {text!r}")
+
         # Drop Whisper hallucinations: repetitive phrases where one word
         # makes up >60% of all words (e.g. "I'm sorry I'm sorry I'm sorry...")
         words = low.split()

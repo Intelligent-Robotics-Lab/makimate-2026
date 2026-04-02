@@ -207,9 +207,20 @@ def ros2_param_set(node_name: str, param: str, value: str):
 
 def _whisper_server_set_model(server_url: str, model: str, node) -> None:
     """POST /set_model to the ASR server. Runs in a thread executor."""
+    import urllib.request
+    import json as _json
+
+    # Quick reachability check — fail fast (5 s) instead of waiting 60 s.
     try:
-        import urllib.request
-        import json as _json
+        with urllib.request.urlopen(f"{server_url}/health", timeout=5):
+            pass
+    except Exception as e:
+        node.get_logger().warn(
+            f"ASR server unreachable at {server_url} — skipping set_model ({e})"
+        )
+        return
+
+    try:
         payload = _json.dumps({"model": model}).encode()
         req = urllib.request.Request(
             f"{server_url}/set_model",
@@ -217,11 +228,12 @@ def _whisper_server_set_model(server_url: str, model: str, node) -> None:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        # Model loading can take 30–90 s on CPU — give it plenty of room.
+        with urllib.request.urlopen(req, timeout=120) as resp:
             result = _json.loads(resp.read())
         node.get_logger().info(f"ASR server model set: {result}")
     except Exception as e:
-        node.get_logger().warn(f"Could not reach ASR server to set model: {e}")
+        node.get_logger().warn(f"Could not set ASR server model: {e}")
 
 
 def _pulse_env() -> dict:

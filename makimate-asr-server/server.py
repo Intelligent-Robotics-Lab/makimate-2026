@@ -26,6 +26,7 @@ import wave
 import numpy as np
 import uvicorn
 from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -61,6 +62,15 @@ def _load_model(name: str):
 # App
 # ---------------------------------------------------------------------------
 app = FastAPI(title="MakiMate ASR Server")
+
+# Allow the dashboard (served from the Pi) to call this server directly
+# from the browser — without this, every browser fetch is blocked by CORS.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
