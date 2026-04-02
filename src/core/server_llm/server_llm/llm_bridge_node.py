@@ -27,14 +27,14 @@ class LLMBridge(Node):
         self.declare_parameter('asr_enable_topic', '/asr/enable')
 
         host = self.get_parameter('laptop_host').value
-        path = self.get_parameter('endpoint_path').value
+        self._endpoint_path = self.get_parameter('endpoint_path').value
         self.request_topic = self.get_parameter('request_topic').value
         self.stream_topic = self.get_parameter('stream_topic').value
         self.response_topic = self.get_parameter('response_topic').value
         self.timeout_secs = float(self.get_parameter('timeout_secs').value)
         asr_enable_topic = self.get_parameter('asr_enable_topic').value
 
-        self.endpoint = host.rstrip('/') + path
+        self.endpoint = host.rstrip('/') + self._endpoint_path
 
         # ROS pubs/sub
         self.stream_pub = self.create_publisher(String, self.stream_topic, 10)
@@ -70,6 +70,10 @@ class LLMBridge(Node):
             self.get_logger().error(f"Failed to send system prompt: {e}")
 
     def _on_request(self, msg: String) -> None:
+        # Re-read host param so dashboard "Apply LLM" takes effect without restart
+        host = self.get_parameter('laptop_host').value
+        self.endpoint = host.rstrip('/') + self._endpoint_path
+
         user_text = msg.data
         stripped = user_text.strip()
         if not stripped:

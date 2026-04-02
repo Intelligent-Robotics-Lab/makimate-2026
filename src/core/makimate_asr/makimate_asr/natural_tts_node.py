@@ -356,70 +356,20 @@ class NaturalTTS(Node):
                 "piper_cli backend requested but no 'piper_model' set."
             )
             return
-        
-        # Start persistent piper process
-        piper_cmd = [
+        self._piper_cmd_str = " ".join(shlex.quote(c) for c in [
             self.piper_command,
-            "--model",
-            self.piper_model,
+            "--model", self.piper_model,
             "--output-raw",
-            "--length_scale",
-            str(self.length_scale),
-            "--noise_scale",
-            str(self.noise_scale),
-            "--noise_w",
-            str(self.noise_w),
-            "--sentence_silence",
-            str(self.sentence_silence),
-            "--json-input",
-        ]
-        
-        piper_cmd_str = " ".join(shlex.quote(c) for c in piper_cmd)
-        full_cmd = f"{piper_cmd_str} | {self.piper_audio_command}"
-        
-        try:
-            self.piper_process = subprocess.Popen(
-                full_cmd,
-                shell=True,
-                stdin=subprocess.PIPE,
-                stderr=subprocess.PIPE,  # Capture stderr to monitor completion
-                bufsize=0
-            )
-            
-            # Start thread to monitor stderr for completion messages
-            self.piper_speaking = threading.Event()
-            self.piper_monitor_thread = threading.Thread(
-                target=self._monitor_piper_output,
-                daemon=True
-            )
-            self.piper_monitor_thread.start()
-            
-            self.get_logger().info(
-                f"Piper backend ready (persistent process):\n"
-                f"  command={self.piper_command}\n"
-                f"  model={self.piper_model}"
-            )
-        except Exception as e:
-            self.get_logger().error(f"Failed to start piper process: {e}")
-    
-    def _monitor_piper_output(self):
-        """Monitor piper's stderr to detect when audio finishes playing."""
-        while self.piper_process and self.piper_process.stderr:
-            try:
-                line = self.piper_process.stderr.readline()
-                if not line:
-                    break
-                
-                line_str = line.decode('utf-8', errors='ignore').strip()
-                
-                # Piper outputs this when audio finishes playing
-                if 'Real-time factor:' in line_str:
-                    self.piper_speaking.clear()  # Signal that speaking finished
-                    self.get_logger().debug(f"Piper completed: {line_str}")
-                    
-            except Exception as e:
-                self.get_logger().warn(f"Piper monitor error: {e}")
-                break
+            "--length_scale", str(self.length_scale),
+            "--noise_scale", str(self.noise_scale),
+            "--noise_w", str(self.noise_w),
+            "--sentence_silence", str(self.sentence_silence),
+        ])
+        self.get_logger().info(
+            f"Piper backend ready (per-utterance):\n"
+            f"  command={self.piper_command}\n"
+            f"  model={self.piper_model}"
+        )
 
     # ======================================================================
     # ASR control
@@ -484,34 +434,21 @@ class NaturalTTS(Node):
         self._last_tts_activity_time = time.time()
 
     def _speak_piper_cli(self, text: str):
-        if not self.piper_process or self.piper_process.poll() is not None:
-            self.get_logger().error("Piper process not running, restarting...")
-            self._init_piper()
-            if not self.piper_process:
-                return
-        
+        if not hasattr(self, '_piper_cmd_str') or not self._piper_cmd_str:
+            self.get_logger().error("Piper not initialised.")
+            return
+
         self.get_logger().info(f"[piper_cli] Speaking: {text!r}")
-        
+        full_cmd = f"{self._piper_cmd_str} | {self.piper_audio_command}"
         try:
-            if self.piper_process.stdin:
-                # Send text as JSON
-                import json
-                json_input = json.dumps({"text": text.strip()}) + "\n"
-                self.piper_process.stdin.write(json_input.encode("utf-8"))
-                self.piper_process.stdin.flush()
-                
-                # SIMPLE FIX: Estimate audio duration
-                # Rough estimate: ~15 characters per second of speech
-                estimated_duration = max(0.5, len(text) / 15.0)
-                
-                # Add 0.5s buffer for audio playback latency
-                import time
-                time.sleep(estimated_duration + 0.5)
-                
+            proc = subprocess.Popen(
+                full_cmd, shell=True,
+                stdin=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            )
+            proc.communicate(input=(text.strip() + "\n").encode())
             self._last_tts_activity_time = time.time()
         except Exception as e:
-            self.get_logger().error(f"[piper_cli] Error writing to Piper: {e}")
-            self.piper_process = None
+            self.get_logger().error(f"[piper_cli] Error: {e}")
 
     # ======================================================================
     # Cleanup
@@ -523,13 +460,7 @@ class NaturalTTS(Node):
                 self.engine.stop()
             except Exception:
                 pass
-        if self.piper_process:
-            try:
-                self.piper_process.stdin.close()
-                self.piper_process.terminate()
-                self.piper_process.wait(timeout=2)
-            except Exception:
-                self.piper_process.kill()
+        # piper now runs per-utterance — no persistent process to clean up
         super().destroy_node()
 
 

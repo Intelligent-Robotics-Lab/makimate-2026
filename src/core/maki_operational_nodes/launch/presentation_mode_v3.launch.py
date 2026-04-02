@@ -121,7 +121,7 @@ def generate_launch_description():
             + "cd ~/makimate-2026/src/core/server_llm/server_llm && "
               "python3 llm_bridge_node.py "
               "--ros-args "
-              "-p laptop_host:='http://Swift3x.local:8000' "
+              "-p laptop_host:='http://35.50.123.51:8000' "
               "-p endpoint_path:='/chat/stream' "
               "-p request_topic:=/llm/request "
               "-p stream_topic:=/llm/stream "
