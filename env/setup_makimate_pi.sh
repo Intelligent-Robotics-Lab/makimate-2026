@@ -188,7 +188,7 @@ pcm.respeaker_shared {
     type dsnoop
     ipc_key 7890
     slave {
-        pcm "hw:1,0"
+        pcm "hw:ArrayUAC10,0"
         channels 1
         rate 16000
         format S16_LE

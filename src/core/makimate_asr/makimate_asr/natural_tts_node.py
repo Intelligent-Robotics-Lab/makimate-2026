@@ -375,7 +375,7 @@ class NaturalTTS(Node):
         ]
         
         piper_cmd_str = " ".join(shlex.quote(c) for c in piper_cmd)
-        full_cmd = f"nice -n 15 {piper_cmd_str} | nice -n 15 {self.piper_audio_command}"
+        full_cmd = f"{piper_cmd_str} | {self.piper_audio_command}"
         
         try:
             self.piper_process = subprocess.Popen(
