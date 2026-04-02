@@ -300,36 +300,69 @@ def get_volume() -> int:
 
 
 def set_mic_gain(value: int) -> tuple:
-    """Set ALSA capture/mic gain. Returns (success, message, actual_value)."""
+    """Set mic/capture gain. Returns (success, message, actual_value).
+    Tries PulseAudio source first, then ALSA with and without card specifier."""
+    import re
     value = max(0, min(100, value))
-    for control in ('Capture', 'Mic Capture Volume', 'Mic', 'Digital Capture Volume'):
-        try:
-            r = subprocess.run(
-                ['amixer', '-q', 'sset', control, f'{value}%'],
-                capture_output=True, text=True, timeout=3,
-            )
-            if r.returncode == 0:
-                return True, control, value
-        except Exception:
-            continue
+    # 1. PulseAudio — works regardless of ALSA control naming
+    try:
+        r = subprocess.run(
+            ['pactl', 'set-source-volume', '@DEFAULT_SOURCE@', f'{value}%'],
+            capture_output=True, text=True, timeout=3, env=_pulse_env(),
+        )
+        if r.returncode == 0:
+            return True, 'PulseAudio source', value
+    except Exception:
+        pass
+    # 2. ALSA — try ReSpeaker card explicitly, then default card
+    _alsa_cards   = [['amixer', '-c', 'ArrayUAC10'], ['amixer', '-c', '2'], ['amixer']]
+    _alsa_controls = ('Capture', 'Mic Capture Volume', 'Mic', 'Digital Capture Volume',
+                      'Auto Gain Control')
+    for card_args in _alsa_cards:
+        for control in _alsa_controls:
+            try:
+                r = subprocess.run(
+                    card_args + ['-q', 'sset', control, f'{value}%'],
+                    capture_output=True, text=True, timeout=3,
+                )
+                if r.returncode == 0:
+                    return True, f'{" ".join(card_args)} {control}', value
+            except Exception:
+                continue
     return False, 'No suitable ALSA capture control found', value
 
 
 def get_mic_gain() -> int:
-    """Read current ALSA capture gain (0-100). Returns -1 on failure."""
+    """Read current mic/capture gain (0-100). Returns -1 on failure."""
     import re
-    for control in ('Capture', 'Mic Capture Volume', 'Mic', 'Digital Capture Volume'):
-        try:
-            r = subprocess.run(
-                ['amixer', 'sget', control],
-                capture_output=True, text=True, timeout=3,
-            )
-            if r.returncode == 0:
-                m = re.search(r'\[(\d+)%\]', r.stdout)
-                if m:
-                    return int(m.group(1))
-        except Exception:
-            continue
+    # 1. PulseAudio source volume
+    try:
+        r = subprocess.run(
+            ['pactl', 'get-source-volume', '@DEFAULT_SOURCE@'],
+            capture_output=True, text=True, timeout=3, env=_pulse_env(),
+        )
+        if r.returncode == 0:
+            m = re.search(r'(\d+)%', r.stdout)
+            if m:
+                return int(m.group(1))
+    except Exception:
+        pass
+    # 2. ALSA — try ReSpeaker card first, then default
+    _alsa_cards    = [['amixer', '-c', 'ArrayUAC10'], ['amixer', '-c', '2'], ['amixer']]
+    _alsa_controls = ('Capture', 'Mic Capture Volume', 'Mic', 'Digital Capture Volume')
+    for card_args in _alsa_cards:
+        for control in _alsa_controls:
+            try:
+                r = subprocess.run(
+                    card_args + ['sget', control],
+                    capture_output=True, text=True, timeout=3,
+                )
+                if r.returncode == 0:
+                    m = re.search(r'\[(\d+)%\]', r.stdout)
+                    if m:
+                        return int(m.group(1))
+            except Exception:
+                continue
     return -1
 
 

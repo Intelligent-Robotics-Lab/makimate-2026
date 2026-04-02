@@ -1,3 +1,4 @@
+import re
 import time
 
 import rclpy
@@ -12,6 +13,14 @@ from makimate_interfaces.msg import FaceTrackArray
 VOICE_THRESHOLD = 0.30
 # Minimum fused confidence to inject the user's name into the LLM message
 FUSED_THRESHOLD = 0.30
+
+# Phonetic mis-transcriptions of "Maki" that Whisper commonly produces.
+# These are replaced with "maki" before any wake-phrase or LLM logic runs.
+# Add more as you discover them in the logs.
+_MAKI_ALIASES = [
+    "mock", "mockey", "mocky", "makey", "mackey", "mackie",
+    "marky", "markee", "markey", "maki mate", "mockey mate",
+]
 
 
 class ASRCommandRouter(Node):
@@ -186,6 +195,15 @@ class ASRCommandRouter(Node):
             return
 
         self.get_logger().info(f"[ASR] Heard: {text!r}")
+
+        # Normalise phonetic mis-transcriptions of "Maki" → "maki"
+        _corrected = low
+        for alias in _MAKI_ALIASES:
+            _corrected = re.sub(r'\b' + re.escape(alias) + r'\b', 'maki', _corrected)
+        if _corrected != low:
+            self.get_logger().info(f"[ASR] Corrected to: {_corrected!r}")
+            text = _corrected  # use corrected text for all further processing
+            low  = _corrected
 
         # Drop Whisper hallucinations: repetitive phrases where one word
         # makes up >60% of all words (e.g. "I'm sorry I'm sorry I'm sorry...")
