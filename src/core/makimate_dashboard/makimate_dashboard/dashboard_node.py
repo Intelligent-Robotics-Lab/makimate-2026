@@ -306,6 +306,7 @@ def robot_start(node: "DashboardNode") -> tuple:
 
 
 def robot_stop(node: "DashboardNode") -> tuple:
+    import time as _time
     with node._robot_lock:
         proc = node._robot_proc
         if proc is None or proc.poll() is not None:
@@ -313,7 +314,7 @@ def robot_stop(node: "DashboardNode") -> tuple:
             return False, "Not running"
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-            proc.wait(timeout=8)
+            proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             try:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
@@ -321,6 +322,10 @@ def robot_stop(node: "DashboardNode") -> tuple:
                 pass
         except Exception:
             pass
+        # camera_ros holds the libcamera pipeline even after the top-level
+        # process exits — force-kill it and wait for the hardware to release
+        subprocess.run(["pkill", "-KILL", "-f", "camera_node"], capture_output=True)
+        _time.sleep(1.5)
         node._robot_proc = None
         return True, "Stopped"
 
