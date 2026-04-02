@@ -26,6 +26,7 @@ import usb.core
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Int32, Bool, Float32
+from rcl_interfaces.msg import SetParametersResult
 
 
 class ReSpeakerDSP(Node):
@@ -89,6 +90,11 @@ class ReSpeakerDSP(Node):
         self._proximity_pub = self.create_publisher(Float32, '/respeaker/proximity', 10)
 
         # ------------------------------------------------------------------ #
+        # Live parameter updates
+        # ------------------------------------------------------------------ #
+        self.add_on_set_parameters_callback(self._on_params)
+
+        # ------------------------------------------------------------------ #
         # Polling timer
         # ------------------------------------------------------------------ #
         self.create_timer(1.0 / poll_rate, self._poll)
@@ -96,6 +102,33 @@ class ReSpeakerDSP(Node):
             f'ReSpeakerDSP running at {poll_rate} Hz  |  '
             f'/respeaker/doa  /respeaker/vad  /respeaker/proximity'
         )
+
+    # ====================================================================== #
+    # Live parameter callback — applies changes immediately to DSP registers
+    # ====================================================================== #
+
+    def _on_params(self, params):
+        _DSP_MAP = {
+            'enable_agc':  [('AGCONOFF',             lambda v: 1 if v else 0)],
+            'enable_ns':   [('STATNOISEONOFF_SR',    lambda v: 1 if v else 0),
+                            ('NONSTATNOISEONOFF_SR', lambda v: 1 if v else 0)],
+            'enable_echo': [('ECHOONOFF',            lambda v: 1 if v else 0),
+                            ('NLATTENONOFF',         lambda v: 1 if v else 0)],
+            'vad_threshold': [('GAMMAVAD_SR',        lambda v: float(v))],
+            'hpf_cutoff':    [('HPFONOFF',           lambda v: int(v))],
+        }
+        for p in params:
+            if p.name not in _DSP_MAP:
+                continue
+            for reg, fn in _DSP_MAP[p.name]:
+                try:
+                    val = fn(p.value)
+                    self._tuning.write(reg, val)
+                    self.get_logger().info(f'[live] DSP {reg} = {val}')
+                except Exception as e:
+                    self.get_logger().warn(f'[live] DSP write {reg} failed: {e}')
+                    return SetParametersResult(successful=False, reason=str(e))
+        return SetParametersResult(successful=True)
 
     # ====================================================================== #
     # DSP startup configuration

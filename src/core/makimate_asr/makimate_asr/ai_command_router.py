@@ -33,6 +33,7 @@ class ASRCommandRouter(Node):
         self.declare_parameter("sleep_phrase", "good bye")
         self.declare_parameter("wake_greeting", "Hello! I'm awake and ready to talk. My name is Maki Mate, how may I help you.")
         self.declare_parameter("sleep_farewell", "Goodbye! I'm going back to sleep now.")
+        self.declare_parameter("reply_keyword", "")  # if set, only forward to LLM when keyword present
 
         asr_topic = self.get_parameter("asr_topic").value
         llm_request_topic = self.get_parameter("llm_request_topic").value
@@ -44,6 +45,7 @@ class ASRCommandRouter(Node):
         self._sleep_phrase = self.get_parameter("sleep_phrase").value.lower()
         self._wake_greeting = self.get_parameter("wake_greeting").value
         self._sleep_farewell = self.get_parameter("sleep_farewell").value
+        self._reply_keyword = self.get_parameter("reply_keyword").value.lower().strip()
 
         self._sleep_phrases = [
             self._sleep_phrase, "goodbye", "good night", "goodnight",
@@ -212,6 +214,14 @@ class ASRCommandRouter(Node):
             response = f"Hi {name}!" if name and conf >= FUSED_THRESHOLD else "Hi there!"
             self.get_logger().info(f"Greeting response: {response}")
             self._speak_immediate(response)
+            return
+
+        # Keyword filter — if set, only reply when keyword is present in the utterance
+        self._reply_keyword = self.get_parameter("reply_keyword").value.lower().strip()
+        if self._reply_keyword and self._reply_keyword not in low:
+            self.get_logger().info(
+                f"Reply keyword '{self._reply_keyword}' not in utterance — ignoring."
+            )
             return
 
         # Normal conversation → forward to LLM with identity context.

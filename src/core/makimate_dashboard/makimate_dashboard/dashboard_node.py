@@ -83,8 +83,9 @@ class DashboardNode(Node):
             history=QoSHistoryPolicy.KEEP_LAST,
             depth=1,
         )
-        self.create_subscription(Image, '/camera/image_raw', self._on_image, camera_qos)
-        self.create_subscription(FaceTrackArray, '/maki/face_tracks', self._on_face_tracks, 10)
+        # Camera feed disabled — too much load on Pi
+        # self.create_subscription(Image, '/camera/image_raw', self._on_image, camera_qos)
+        # self.create_subscription(FaceTrackArray, '/maki/face_tracks', self._on_face_tracks, 10)
 
         self.get_logger().info('Dashboard node ready — web UI on :8080')
 
@@ -257,6 +258,40 @@ def get_volume() -> int:
     return -1
 
 
+def set_mic_gain(value: int) -> tuple:
+    """Set ALSA capture/mic gain. Returns (success, message, actual_value)."""
+    value = max(0, min(100, value))
+    for control in ('Capture', 'Mic Capture Volume', 'Mic', 'Digital Capture Volume'):
+        try:
+            r = subprocess.run(
+                ['amixer', '-q', 'sset', control, f'{value}%'],
+                capture_output=True, text=True, timeout=3,
+            )
+            if r.returncode == 0:
+                return True, control, value
+        except Exception:
+            continue
+    return False, 'No suitable ALSA capture control found', value
+
+
+def get_mic_gain() -> int:
+    """Read current ALSA capture gain (0-100). Returns -1 on failure."""
+    import re
+    for control in ('Capture', 'Mic Capture Volume', 'Mic', 'Digital Capture Volume'):
+        try:
+            r = subprocess.run(
+                ['amixer', 'sget', control],
+                capture_output=True, text=True, timeout=3,
+            )
+            if r.returncode == 0:
+                m = re.search(r'\[(\d+)%\]', r.stdout)
+                if m:
+                    return int(m.group(1))
+        except Exception:
+            continue
+    return -1
+
+
 def get_local_ip() -> str:
     """Return the Pi's primary LAN IP address."""
     try:
@@ -401,7 +436,7 @@ def create_app(node: DashboardNode) -> FastAPI:
     @app.on_event("startup")
     async def _startup():
         node.set_event_loop(asyncio.get_event_loop())
-        asyncio.create_task(_video_broadcast_loop(node))
+        # asyncio.create_task(_video_broadcast_loop(node))  # camera disabled
 
     @app.get("/", response_class=HTMLResponse)
     async def get_dashboard():
@@ -442,6 +477,9 @@ async def _send_initial_state(ws: WebSocket, node: DashboardNode):
         vol = await loop.run_in_executor(None, get_volume)
         if vol >= 0:
             await ws.send_text(json.dumps({"type": "volume_current", "value": vol}))
+        mic = await loop.run_in_executor(None, get_mic_gain)
+        if mic >= 0:
+            await ws.send_text(json.dumps({"type": "mic_gain_current", "value": mic}))
         ip = await loop.run_in_executor(None, get_local_ip)
         await ws.send_text(json.dumps({"type": "system_info", "ip": ip, "hostname": socket.gethostname()}))
         await ws.send_text(json.dumps({"type": "robot_status", "running": robot_is_running(node)}))
@@ -494,6 +532,14 @@ async def _handle(ws: WebSocket, node: DashboardNode, msg: dict):
             await ws.send_text(json.dumps({"type": "volume_ok", "value": actual}))
         else:
             await ws.send_text(json.dumps({"type": "volume_fail", "detail": detail}))
+
+    elif t == "mic_gain_set":
+        value = int(msg.get("value", 80))
+        ok, detail, actual = await loop.run_in_executor(None, set_mic_gain, value)
+        if ok:
+            await ws.send_text(json.dumps({"type": "mic_gain_ok", "value": actual}))
+        else:
+            await ws.send_text(json.dumps({"type": "mic_gain_fail", "detail": detail}))
 
     elif t == "robot_start":
         ok, detail = await loop.run_in_executor(None, robot_start, node)

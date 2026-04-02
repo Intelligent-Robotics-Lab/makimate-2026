@@ -116,7 +116,7 @@ input[type=checkbox]{accent-color:#f56565;cursor:pointer}
       <div id="param-ui"></div>
     </div>
 
-    <!-- Camera feed -->
+    <!-- Camera feed (disabled — too much load on Pi)
     <div class="sec">
       <h2>&#128247; Camera</h2>
       <div style="position:relative;line-height:0">
@@ -127,6 +127,7 @@ input[type=checkbox]{accent-color:#f56565;cursor:pointer}
       </div>
       <div id="cam-status" style="font-size:.65em;color:#4a5568;margin-top:4px"></div>
     </div>
+    -->
 
     <!-- Robot Control -->
     <div class="sec">
@@ -157,6 +158,13 @@ input[type=checkbox]{accent-color:#f56565;cursor:pointer}
         <span class="vd" id="vol-display">80%</span>
       </div>
       <div id="vol-status" style="font-size:.68em;color:#718096;margin-top:2px;min-height:1.2em"></div>
+      <div class="pr" style="margin-top:6px">
+        <label>Mic Input Gain</label>
+        <input type="range" id="mic-slider" min="0" max="100" step="1" value="80"
+               oninput="onMicSlider(this.value)">
+        <span class="vd" id="mic-display">80%</span>
+      </div>
+      <div id="mic-status" style="font-size:.68em;color:#718096;margin-top:2px;min-height:1.2em"></div>
     </div>
 
     <!-- Server config -->
@@ -217,6 +225,9 @@ const PARAMS = {
   ],
   respeaker_dsp: [
     {n:"vad_threshold",    l:"VAD Threshold (dB)",      t:"f", min:0,   max:10,   step:.5},
+    {n:"enable_agc",       l:"AGC (Auto Gain Control)", t:"b"},
+    {n:"enable_ns",        l:"Noise Suppression",       t:"b"},
+    {n:"enable_echo",      l:"Echo Cancellation",       t:"b"},
   ],
   respeaker_whisper_asr: [
     {n:"vad_aggressiveness",  l:"VAD Aggressiveness (0-3)", t:"i", min:0,   max:3,    step:1},
@@ -226,6 +237,7 @@ const PARAMS = {
   ai_command_router: [
     {n:"wake_phrase",      l:"Wake Phrase",             t:"s"},
     {n:"sleep_phrase",     l:"Sleep Phrase",            t:"s"},
+    {n:"reply_keyword",    l:"Reply Keyword (blank = always reply)", t:"s"},
   ],
   llm_bridge: [
     {n:"laptop_host",      l:"LLM Host URL",            t:"s"},
@@ -245,7 +257,9 @@ function buildParamUI() {
     for (const p of ps) {
       const row = document.createElement('div');
       row.className = 'pr';
-      const mid = p.t === 's'
+      const mid = p.t === 'b'
+        ? `<input type="checkbox" id="v_${node}_${p.n}" style="margin:0 6px">`
+        : p.t === 's'
         ? `<input type="text" class="wide" id="v_${node}_${p.n}" value="">`
         : `<input type="range"  id="s_${node}_${p.n}"
               min="${p.min}" max="${p.max}" step="${p.step}"
@@ -281,14 +295,17 @@ function setParamUI(node, pn, val) {
   const sEl = document.getElementById(`s_${node}_${pn}`);
   if (vEl) {
     const p = PARAMS[node]?.find(x=>x.n===pn);
-    vEl.value = (p?.t==='f') ? parseFloat(val).toFixed(2) : val;
+    if (p?.t === 'b') vEl.checked = (val === true || val === 'true');
+    else vEl.value = (p?.t==='f') ? parseFloat(val).toFixed(2) : val;
   }
   if (sEl) sEl.value = val;
 }
 
 function setParam(node, pn) {
-  const val = document.getElementById(`v_${node}_${pn}`)?.value;
-  if (val === undefined) return;
+  const el = document.getElementById(`v_${node}_${pn}`);
+  if (!el) return;
+  const p = PARAMS[node]?.find(x => x.n === pn);
+  const val = (p?.t === 'b') ? String(el.checked) : el.value;
   send({type:'param_set', node, param:pn, value:val});
   const btn = document.getElementById(`b_${node}_${pn}`);
   if (btn) { btn.textContent='...'; btn.disabled=true; }
@@ -317,6 +334,20 @@ function onVolSlider(v) {
 
 function setVolStatus(ok, msg) {
   const el = document.getElementById('vol-status');
+  el.textContent = msg;
+  el.style.color = ok ? '#68d391' : '#fc8181';
+}
+
+let micTimer = null;
+function onMicSlider(v) {
+  document.getElementById('mic-display').textContent = v + '%';
+  clearTimeout(micTimer);
+  micTimer = setTimeout(() => {
+    send({type: 'mic_gain_set', value: parseInt(v)});
+  }, 120);
+}
+function setMicStatus(ok, msg) {
+  const el = document.getElementById('mic-status');
   el.textContent = msg;
   el.style.color = ok ? '#68d391' : '#fc8181';
 }
@@ -460,6 +491,13 @@ function connect() {
     } else if (m.type === 'volume_current') {
       document.getElementById('vol-slider').value = m.value;
       document.getElementById('vol-display').textContent = m.value + '%';
+    } else if (m.type === 'mic_gain_ok') {
+      setMicStatus(true, `✓ Mic gain set to ${m.value}%`);
+    } else if (m.type === 'mic_gain_fail') {
+      setMicStatus(false, `✗ ${m.detail}`);
+    } else if (m.type === 'mic_gain_current') {
+      document.getElementById('mic-slider').value = m.value;
+      document.getElementById('mic-display').textContent = m.value + '%';
     } else if (m.type === 'system_info') {
       const el = document.getElementById('pi-ip');
       el.textContent = `${m.hostname}  ${m.ip}`;
