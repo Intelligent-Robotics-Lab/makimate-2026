@@ -288,6 +288,7 @@ def robot_start(node: "DashboardNode") -> tuple:
         try:
             repo = str(_get_repo_root())
             cmd = (
+                "export LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:${LD_LIBRARY_PATH:-} && "
                 "source /opt/ros/jazzy/setup.bash && "
                 f"source {repo}/install/setup.bash && "
                 "if [ -f ~/maki_ws/install/setup.bash ]; then source ~/maki_ws/install/setup.bash; fi && "
