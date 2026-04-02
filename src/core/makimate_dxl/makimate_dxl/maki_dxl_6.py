@@ -135,8 +135,17 @@ class MakiDxl6(Node):
             f"Opened Dynamixel port {port_name} @ {baud_rate}bps (IDs {self.ids})"
         )
 
-        # Enable torque on all motors
+        # Enable torque — but first write current position as goal position so the
+        # motor holds still on enable instead of snapping to a stale goal register.
         for dxl_id in self.ids:
+            present, result, _ = self.packet_handler.read4ByteTxRx(
+                self.port_handler, dxl_id, self.ADDR_PRESENT_POSITION
+            )
+            if result == COMM_SUCCESS:
+                self.packet_handler.write4ByteTxRx(
+                    self.port_handler, dxl_id, self.ADDR_GOAL_POSITION, present
+                )
+
             result, error = self.packet_handler.write1ByteTxRx(
                 self.port_handler, dxl_id,
                 self.ADDR_TORQUE_ENABLE, self.TORQUE_ENABLE
