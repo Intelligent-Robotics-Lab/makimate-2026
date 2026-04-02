@@ -322,10 +322,10 @@ def robot_stop(node: "DashboardNode") -> tuple:
                 pass
         except Exception:
             pass
-        # camera_ros holds the libcamera pipeline even after the top-level
-        # process exits — force-kill it and wait for the hardware to release
+        # camera_ros holds the libcamera/PISP pipeline even after the top-level
+        # process exits — force-kill it and wait for the hardware to fully release
         subprocess.run(["pkill", "-KILL", "-f", "camera_node"], capture_output=True)
-        _time.sleep(1.5)
+        _time.sleep(3.0)
         node._robot_proc = None
         return True, "Stopped"
 

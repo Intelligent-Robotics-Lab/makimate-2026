@@ -228,6 +228,7 @@ class FaceTracker(Node):
         self._fps: float = 0.0
         self._fps_last_time: float = time.monotonic()
         self._session_faces: Dict[str, List[np.ndarray]] = {}  # session-only, cleared on sleep
+        self._last_detect_time: float = 0.0
 
         # ------------------------------------------------------------------ #
         # cv_bridge
@@ -322,7 +323,12 @@ class FaceTracker(Node):
 
         # ------------------------------------------------------------------
         # Step 1: Detect faces + landmarks with MediaPipe FaceMesh
+        # Throttle to ~10 fps — full MediaPipe inference at 30 fps pegs the
+        # Pi CPU and starves other processes (camera feed, dashboard).
         # ------------------------------------------------------------------
+        if now - self._last_detect_time < 0.1:
+            return
+        self._last_detect_time = now
         detections = self._detect_faces(frame, w_img, h_img)
 
         # ------------------------------------------------------------------
