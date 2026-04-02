@@ -6,6 +6,7 @@ def generate_launch_description():
     shell_prefix = (
         "source /opt/ros/jazzy/setup.bash && "
         "source ~/makimate-2026/install/setup.bash && "
+        "{ [ -f ~/maki_ws/install/setup.bash ] && source ~/maki_ws/install/setup.bash; true; } && "
     )
 
     # 1a) ASR text: Whisper with VAD-based utterance segmentation.
