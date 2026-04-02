@@ -123,9 +123,11 @@ class ReSpeakerWhisperASR(Node):
         self.declare_parameter('silence_ms',           400)    # ms of silence → utterance end
         self.declare_parameter('channels',             1)      # kept for API compat; UAC1.0 = 1
         self.declare_parameter('save_debug_audio',     False)  # write each VAD chunk to /tmp/maki_heard/
+        self.declare_parameter('rms_threshold',        0.0)    # 0=disabled; ~0.02 rejects distant voices
 
         self._save_debug_audio = bool(self.get_parameter('save_debug_audio').value)
         self._debug_audio_counter = 0
+        self._rms_threshold = float(self.get_parameter('rms_threshold').value)
 
         _dev_raw = str(self.get_parameter('device').value).strip()
         try:
@@ -231,6 +233,14 @@ class ReSpeakerWhisperASR(Node):
             if chunk is None:
                 time.sleep(0.02)
                 continue
+
+            if self._rms_threshold > 0.0:
+                rms = float(np.sqrt(np.mean(chunk ** 2)))
+                if rms < self._rms_threshold:
+                    self.get_logger().debug(
+                        f"[RMS] Discarded chunk rms={rms:.4f} < threshold={self._rms_threshold:.4f}"
+                    )
+                    continue
 
             if self._save_debug_audio:
                 self._write_debug_wav(chunk)
