@@ -122,6 +122,10 @@ class ReSpeakerWhisperASR(Node):
         self.declare_parameter('vad_aggressiveness',   2)      # 0-3, 3 = most aggressive
         self.declare_parameter('silence_ms',           400)    # ms of silence → utterance end
         self.declare_parameter('channels',             1)      # kept for API compat; UAC1.0 = 1
+        self.declare_parameter('save_debug_audio',     False)  # write each VAD chunk to /tmp/maki_heard/
+
+        self._save_debug_audio = bool(self.get_parameter('save_debug_audio').value)
+        self._debug_audio_counter = 0
 
         _dev_raw = str(self.get_parameter('device').value).strip()
         try:
@@ -228,12 +232,39 @@ class ReSpeakerWhisperASR(Node):
                 time.sleep(0.02)
                 continue
 
+            if self._save_debug_audio:
+                self._write_debug_wav(chunk)
+
             text = self._transcribe(chunk)
             if text:
                 self.get_logger().info(f"ASR text: {text!r}")
                 msg = String()
                 msg.data = text
                 self.text_pub.publish(msg)
+
+    # ------------------------------------------------------------------ #
+    # Debug audio saving
+    # ------------------------------------------------------------------ #
+    def _write_debug_wav(self, audio: np.ndarray):
+        """Save this VAD chunk to /tmp/maki_heard/ so you can aplay it."""
+        import os
+        out_dir = '/tmp/maki_heard'
+        os.makedirs(out_dir, exist_ok=True)
+        self._debug_audio_counter = (self._debug_audio_counter + 1) % 20
+        path = os.path.join(out_dir, f'{self._debug_audio_counter:02d}.wav')
+        try:
+            with wave.open(path, 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(SAMPLE_RATE)
+                wf.writeframes((audio * 32768).astype(np.int16).tobytes())
+            # symlink latest.wav → most recent chunk for easy access
+            latest = os.path.join(out_dir, 'latest.wav')
+            if os.path.lexists(latest):
+                os.remove(latest)
+            os.symlink(path, latest)
+        except Exception as e:
+            self.get_logger().warn(f'[DebugAudio] Could not write {path}: {e}')
 
     # ------------------------------------------------------------------ #
     # Transcription (local or server)

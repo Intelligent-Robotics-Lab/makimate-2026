@@ -46,11 +46,19 @@ class LLMBridge(Node):
             10,
         )
         self.asr_enable_pub = self.create_publisher(Bool, asr_enable_topic, 10)
+        # Dashboard publishes here to update the LLM host at runtime without restart
+        self.create_subscription(String, '/llm/set_host', self._on_set_host, 10)
 
         self.get_logger().info(f"LLMBridge connecting to {self.endpoint}")
         self.get_logger().info(f"Listening for requests on {self.request_topic}")
 
         self._send_system_prompt()
+
+    def _on_set_host(self, msg: String) -> None:
+        new_host = msg.data.strip()
+        if new_host:
+            self.endpoint = new_host.rstrip('/') + self._endpoint_path
+            self.get_logger().info(f"LLM host updated to {self.endpoint}")
 
     def _set_asr_enabled(self, enabled: bool) -> None:
         msg = Bool()

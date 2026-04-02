@@ -68,6 +68,10 @@ class DashboardNode(Node):
         )
         self.create_subscription(Log, '/rosout', self._on_log, rosout_qos)
 
+        # Publisher for live LLM host updates (more reliable than ros2 param set)
+        from std_msgs.msg import String as _String
+        self._llm_set_host_pub = self.create_publisher(_String, '/llm/set_host', 10)
+
         # Robot process tracking
         self._robot_proc: Optional[subprocess.Popen] = None
         self._robot_lock = threading.Lock()
@@ -642,9 +646,12 @@ async def _handle(ws: WebSocket, node: DashboardNode, msg: dict):
 
         # Propagate to running ROS nodes where applicable
         if "llm_server_url" in msg:
-            await loop.run_in_executor(
-                None, ros2_param_set, "llm_bridge", "laptop_host", msg["llm_server_url"]
-            )
+            # Publish directly on a ROS topic — far more reliable than ros2 param set
+            from std_msgs.msg import String as _String
+            _host_msg = _String()
+            _host_msg.data = msg["llm_server_url"]
+            node._llm_set_host_pub.publish(_host_msg)
+            node.get_logger().info(f"Published LLM host update: {msg['llm_server_url']}")
         if "whisper_server_url" in msg:
             await loop.run_in_executor(
                 None, ros2_param_set, "respeaker_whisper_asr", "server_url",
