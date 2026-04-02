@@ -539,6 +539,7 @@ function onVideoFrame(b64) {
 (function initFaceCanvas() {
   const img    = document.getElementById('video-feed');
   const canvas = document.getElementById('face-canvas');
+  if (!img || !canvas) return;  // camera section disabled
   const ctx    = canvas.getContext('2d');
 
   const SRC_W = 640, SRC_H = 480;
