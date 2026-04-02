@@ -330,7 +330,12 @@ class FaceTracker(Node):
         if now - self._last_detect_time < 0.1:
             return
         self._last_detect_time = now
+
+        t0 = time.monotonic()
         detections = self._detect_faces(frame, w_img, h_img)
+        t1 = time.monotonic()
+        if t1 - t0 > 0.05:
+            self.get_logger().warn(f'[TIMING] detect_faces: {(t1-t0)*1000:.0f}ms')
 
         # ------------------------------------------------------------------
         # Step 2: Update IoU tracker
@@ -339,11 +344,13 @@ class FaceTracker(Node):
 
         # ------------------------------------------------------------------
         # Step 3: Run face_recognition at most once every 3 seconds.
-        # frame_count-based (every N frames at 30fps = 3x/sec) pegs the Pi CPU.
         # ------------------------------------------------------------------
         if now - self._last_recognition_time >= 3.0 and (self.face_db or self._session_faces):
             self._last_recognition_time = now
+            t0 = time.monotonic()
             self._run_recognition(frame)
+            t1 = time.monotonic()
+            self.get_logger().warn(f'[TIMING] recognition: {(t1-t0)*1000:.0f}ms')
 
         # ------------------------------------------------------------------
         # Step 4: Score every active track
