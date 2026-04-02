@@ -78,6 +78,8 @@ class TrackState:
         self.score: float = 0.0
         # Last known MediaPipe landmarks (List[NormalizedLandmark] or None)
         self.landmarks: Optional[object] = None
+        # Smoothed centroid velocity (pixels/frame) for exit-direction detection
+        self.velocity: Tuple[float, float] = (0.0, 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +232,7 @@ class FaceTracker(Node):
         self._session_faces: Dict[str, List[np.ndarray]] = {}  # session-only, cleared on sleep
         self._last_detect_time: float = 0.0
         self._last_recognition_time: float = 0.0
+        self._speaking_states: Dict[int, bool] = {}  # track_id -> last logged speaking state
 
         # ------------------------------------------------------------------ #
         # cv_bridge
@@ -327,7 +330,7 @@ class FaceTracker(Node):
         # Throttle to ~10 fps — full MediaPipe inference at 30 fps pegs the
         # Pi CPU and starves other processes (camera feed, dashboard).
         # ------------------------------------------------------------------
-        if now - self._last_detect_time < 0.1:
+        if now - self._last_detect_time < 0.067:
             return
         self._last_detect_time = now
 
@@ -369,6 +372,36 @@ class FaceTracker(Node):
 
         # Sort descending — best face is index 0
         scored_tracks.sort(key=lambda t: t.score, reverse=True)
+
+        # ------------------------------------------------------------------
+        # Active speaker: log speaking state changes and elevate the
+        # confirmed-speaking face to index 0 so face_to_maki automatically
+        # gazes toward the person who is talking.
+        # "Confirmed speaking" = at least 5 lip-history samples + variance
+        # above threshold (avoids reacting to a single noisy frame).
+        # ------------------------------------------------------------------
+        for track in scored_tracks:
+            speaking_now = self._is_speaking(track)
+            was_speaking = self._speaking_states.get(track.track_id, False)
+            if speaking_now != was_speaking:
+                self._speaking_states[track.track_id] = speaking_now
+                self.get_logger().info(
+                    f"[ActiveSpeaker] Track {track.track_id} ({track.name}) "
+                    f"{'STARTED' if speaking_now else 'STOPPED'} speaking"
+                )
+
+        speaking_candidates = [
+            t for t in scored_tracks
+            if self._is_speaking(t) and len(t.lip_dist_history) >= 5
+        ]
+        if speaking_candidates and speaking_candidates[0] is not scored_tracks[0]:
+            best_speaker = max(speaking_candidates, key=lambda t: t.score)
+            scored_tracks.remove(best_speaker)
+            scored_tracks.insert(0, best_speaker)
+            self.get_logger().info(
+                f"[ActiveSpeaker] Gaze → track {best_speaker.track_id} "
+                f"({best_speaker.name}) — speaking"
+            )
 
         # ------------------------------------------------------------------
         # Step 5: Publish FaceTrackArray (all faces)
@@ -525,11 +558,21 @@ class FaceTracker(Node):
 
             # Update matched track
             track = self.tracks[tid]
+            old_centroid = track.centroid
             track.bbox          = det_bboxes[best_di]
             track.centroid      = _centroid(track.bbox)
             track.frames_alive += 1
             track.frames_missed = 0
             track.landmarks     = det_landmarks[best_di]
+
+            # Update smoothed centroid velocity (pixels/frame)
+            dx = float(track.centroid[0] - old_centroid[0])
+            dy = float(track.centroid[1] - old_centroid[1])
+            alpha_v = 0.35
+            track.velocity = (
+                alpha_v * dx + (1 - alpha_v) * track.velocity[0],
+                alpha_v * dy + (1 - alpha_v) * track.velocity[1],
+            )
 
             # Update lip distance history with this frame's measurement
             lip_d = self._lip_distance(det_landmarks[best_di], w_img, h_img)
@@ -545,6 +588,7 @@ class FaceTracker(Node):
                     dead_ids.append(tid)
         for tid in dead_ids:
             del self.tracks[tid]
+            self._speaking_states.pop(tid, None)
 
         # Register new tracks for unmatched detections
         for di in range(len(detections)):

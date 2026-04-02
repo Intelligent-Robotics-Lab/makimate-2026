@@ -67,11 +67,25 @@ class MakiBehavior(Node):
         self.face_present = False
         self.no_face_counter = 0
 
-        # If /maki/largest_face_bbox is ~10–15 Hz,
-        # 90 counts ≈ 6–9 seconds with no face before searching.
-        self.no_face_threshold = 90
+        # At ~15 Hz, 30 counts ≈ 2 seconds no-face before searching.
+        # (Plus ~1.2 s of exit-direction coasting = ~3.2 s total.)
+        self.no_face_threshold = 30
 
         self.search_mode = False
+
+        # ------------------------------------------
+        # Exit-direction coasting (follow face out of frame)
+        # ------------------------------------------
+        self._face_vel_x = 0.0          # smoothed normalized face velocity (1/s)
+        self._face_vel_y = 0.0
+        self._last_face_x = 0.0
+        self._last_face_y = 0.0
+        self._last_face_pos_time = 0.0
+        self._coast_remaining = 0       # bbox-callback steps remaining in coast
+        self._coast_yaw = 0.0
+        self._coast_pitch = 0.0
+        self._coast_yaw_target = 0.0    # projected yaw at coast start
+        self._coast_pitch_target = 0.0
 
         # ------------------------------------------
         # DOA-guided search (from /respeaker/doa)
@@ -246,6 +260,11 @@ class MakiBehavior(Node):
         self.face_lock_active = False
         self.monologue_spoken = False
         self.face_lock_start = 0.0
+
+        # reset coast state
+        self._coast_remaining = 0
+        self._face_vel_x = 0.0
+        self._face_vel_y = 0.0
 
         self.get_logger().info("Stopped all behaviors.")
 
@@ -525,6 +544,24 @@ class MakiBehavior(Node):
         if abs(y) < DEADZONE:
             y = 0.0
 
+        # Track face velocity for exit-direction coasting
+        now = time.time()
+        dt = now - self._last_face_pos_time
+        if 0 < dt < 0.4:
+            alpha_v = 0.3
+            self._face_vel_x = (
+                alpha_v * (x - self._last_face_x) / dt
+                + (1 - alpha_v) * self._face_vel_x
+            )
+            self._face_vel_y = (
+                alpha_v * (y - self._last_face_y) / dt
+                + (1 - alpha_v) * self._face_vel_y
+            )
+        self._last_face_x = x
+        self._last_face_y = y
+        self._last_face_pos_time = now
+        self._coast_remaining = 0  # face present — cancel any pending coast
+
         MAX_YAW = 15.0    # stay within hardware clamped range to avoid integrator windup
         MAX_PITCH = 14.0
         K_YAW = 0.5      # proportional gain: face_pos in [-1,1], neck_yaw in degrees
@@ -562,7 +599,36 @@ class MakiBehavior(Node):
 
         # No face detected: tracker publishes [-1, -1, -1, -1]
         if x < 0 or y < 0 or w <= 0 or h <= 0:
+            # -- Exit-direction coasting: continue turning toward where face went --
+            if self._coast_remaining > 0:
+                self._coast_remaining -= 1
+                alpha_coast = 0.25
+                self._coast_yaw += alpha_coast * (self._coast_yaw_target - self._coast_yaw)
+                self._coast_pitch += alpha_coast * (self._coast_pitch_target - self._coast_pitch)
+                self._coast_yaw = max(-15.0, min(15.0, self._coast_yaw))
+                self._coast_pitch = max(-14.0, min(14.0, self._coast_pitch))
+                self.last_yaw = self._coast_yaw
+                self.last_pitch = self._coast_pitch
+                self.send_with_blink(self._coast_yaw, self._coast_pitch, 0.0, 0.0, 20.0, -20.0)
+                return  # don't count as "no face" while coasting
+
             self.no_face_counter += 1
+
+            # On the very first frame of absence, start coast if face was moving
+            if self.no_face_counter == 1 and self.look_at_user_enabled:
+                vel_speed = math.sqrt(self._face_vel_x ** 2 + self._face_vel_y ** 2)
+                if vel_speed > 0.15:
+                    self._coast_remaining = 18  # ~1.2 s at 15 Hz
+                    self._coast_yaw = self.last_yaw
+                    self._coast_pitch = self.last_pitch
+                    self._coast_yaw_target = max(-15.0, min(15.0,
+                        self.last_yaw + self._face_vel_x * 5.0))
+                    self._coast_pitch_target = max(-14.0, min(14.0,
+                        self.last_pitch - self._face_vel_y * 4.0))
+                    self.get_logger().info(
+                        f"Face exited frame — coasting toward exit direction "
+                        f"(vel_x={self._face_vel_x:.2f}, vel_y={self._face_vel_y:.2f})"
+                    )
 
             # Lose lock whenever face disappears
             self.face_lock_active = False
@@ -583,6 +649,7 @@ class MakiBehavior(Node):
 
         # Reset counter when face is present
         self.no_face_counter = 0
+        self._coast_remaining = 0
 
         # ---------------------------
         # Face lock / monologue logic
