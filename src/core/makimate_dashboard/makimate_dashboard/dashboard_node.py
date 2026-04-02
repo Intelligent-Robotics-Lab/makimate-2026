@@ -224,37 +224,66 @@ def _whisper_server_set_model(server_url: str, model: str, node) -> None:
         node.get_logger().warn(f"Could not reach ASR server to set model: {e}")
 
 
+def _pulse_env() -> dict:
+    """Env vars needed to reach PulseAudio from the systemd service."""
+    import os
+    e = os.environ.copy()
+    if 'XDG_RUNTIME_DIR' not in e:
+        e['XDG_RUNTIME_DIR'] = '/run/user/1002'
+    return e
+
+
 def set_volume(value: int) -> tuple:
-    """Set ALSA master volume. Returns (success, message, actual_value)."""
+    """Set PulseAudio sink volume. Returns (success, message, actual_value)."""
     value = max(0, min(100, value))
-    for control in ('Master', 'PCM', 'Speaker'):
-        try:
-            r = subprocess.run(
-                ['amixer', '-q', 'sset', control, f'{value}%'],
-                capture_output=True, text=True, timeout=3,
-            )
-            if r.returncode == 0:
-                return True, control, value
-        except Exception:
-            continue
-    return False, 'No suitable ALSA control found (tried Master, PCM, Speaker)', value
+    try:
+        r = subprocess.run(
+            ['pactl', 'set-sink-volume', '@DEFAULT_SINK@', f'{value}%'],
+            capture_output=True, text=True, timeout=3, env=_pulse_env(),
+        )
+        if r.returncode == 0:
+            return True, 'PulseAudio', value
+    except Exception as e:
+        pass
+    # fallback: ALSA PCM
+    try:
+        r = subprocess.run(
+            ['amixer', '-q', 'sset', 'PCM', f'{value}%'],
+            capture_output=True, text=True, timeout=3,
+        )
+        if r.returncode == 0:
+            return True, 'ALSA PCM', value
+    except Exception:
+        pass
+    return False, 'No suitable volume control found', value
 
 
 def get_volume() -> int:
-    """Read current ALSA master volume (0-100). Returns -1 on failure."""
-    for control in ('Master', 'PCM', 'Speaker'):
-        try:
-            r = subprocess.run(
-                ['amixer', 'sget', control],
-                capture_output=True, text=True, timeout=3,
-            )
-            if r.returncode == 0:
-                import re
-                m = re.search(r'\[(\d+)%\]', r.stdout)
-                if m:
-                    return int(m.group(1))
-        except Exception:
-            continue
+    """Read current PulseAudio sink volume (0-100). Returns -1 on failure."""
+    import re
+    try:
+        r = subprocess.run(
+            ['pactl', 'get-sink-volume', '@DEFAULT_SINK@'],
+            capture_output=True, text=True, timeout=3, env=_pulse_env(),
+        )
+        if r.returncode == 0:
+            m = re.search(r'(\d+)%', r.stdout)
+            if m:
+                return int(m.group(1))
+    except Exception:
+        pass
+    # fallback: ALSA PCM
+    try:
+        r = subprocess.run(
+            ['amixer', 'sget', 'PCM'],
+            capture_output=True, text=True, timeout=3,
+        )
+        if r.returncode == 0:
+            m = re.search(r'\[(\d+)%\]', r.stdout)
+            if m:
+                return int(m.group(1))
+    except Exception:
+        pass
     return -1
 
 

@@ -7,6 +7,7 @@ import yaml
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float64MultiArray
+from rcl_interfaces.msg import SetParametersResult
 
 from dynamixel_sdk import (
     PortHandler,
@@ -182,12 +183,20 @@ class MakiDxl6(Node):
 
         # Create smooth update timer
         self.create_timer(1.0 / update_rate, self._smooth_update)
+        self.add_on_set_parameters_callback(self._on_params)
 
         self.get_logger().info(
             f"MakiDxl6 ready with smooth motion (alpha={self.smoothing_alpha}, rate={update_rate}Hz)\n"
             "Publish [6] relative degree values to /maki/joint_goals.\n"
             "0 deg = neutral per-joint midpoint."
         )
+
+    def _on_params(self, params):
+        for p in params:
+            if p.name == 'smoothing_alpha':
+                self.smoothing_alpha = float(p.value)
+                self.get_logger().info(f'[live] smoothing_alpha = {self.smoothing_alpha}')
+        return SetParametersResult(successful=True)
 
     # ----------------------------------------
     # MOTOR CONFIG LOADING
