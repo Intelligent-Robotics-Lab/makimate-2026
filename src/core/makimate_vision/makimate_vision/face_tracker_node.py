@@ -318,14 +318,6 @@ class FaceTracker(Node):
             bbox_msg = Int32MultiArray()
             bbox_msg.data = [-1, -1, -1, -1]
             self.pub_bbox.publish(bbox_msg)
-            # Still publish debug image with SLEEPING overlay on every frame
-            sleeping_frame = self._draw_annotations(frame, [], w_img, h_img)
-            try:
-                debug_msg = self.bridge.cv2_to_imgmsg(sleeping_frame, encoding='bgr8')
-                debug_msg.header.stamp = self.get_clock().now().to_msg()
-                self._debug_pub.publish(debug_msg)
-            except Exception as e:
-                self.get_logger().error(f"cv2_to_imgmsg (sleep debug) failed: {e}")
             return
 
         # ------------------------------------------------------------------
@@ -396,11 +388,12 @@ class FaceTracker(Node):
         self.pub_bbox.publish(bbox_msg)
 
         # ------------------------------------------------------------------
-        # Step 7: Annotate and publish debug image
+        # Step 7: Annotate and publish debug image (only when debug is on)
+        # Skipped by default — publishing two annotated 640x480 frames at
+        # 30 fps floods DDS loopback (~54 MB/s) and starves other subscribers.
         # ------------------------------------------------------------------
-        annotated = self._draw_annotations(frame, scored_tracks, w_img, h_img)
-
         if self.show_debug:
+            annotated = self._draw_annotations(frame, scored_tracks, w_img, h_img)
             try:
                 cv2.imshow("MakiMate Debug", annotated)
                 cv2.waitKey(1)
@@ -409,20 +402,18 @@ class FaceTracker(Node):
                     "WARNING: Cannot open display. Set show_debug_window:=false.",
                     throttle_duration_sec=10,
                 )
-
-        try:
-            out_msg = self.bridge.cv2_to_imgmsg(annotated, encoding='bgr8')
-            out_msg.header = msg.header
-            self.pub_image.publish(out_msg)
-        except Exception as e:
-            self.get_logger().error(f"cv2_to_imgmsg failed: {e}")
-
-        try:
-            debug_msg = self.bridge.cv2_to_imgmsg(annotated, encoding='bgr8')
-            debug_msg.header.stamp = self.get_clock().now().to_msg()
-            self._debug_pub.publish(debug_msg)
-        except Exception as e:
-            self.get_logger().error(f"cv2_to_imgmsg (debug) failed: {e}")
+            try:
+                out_msg = self.bridge.cv2_to_imgmsg(annotated, encoding='bgr8')
+                out_msg.header = msg.header
+                self.pub_image.publish(out_msg)
+            except Exception as e:
+                self.get_logger().error(f"cv2_to_imgmsg failed: {e}")
+            try:
+                debug_msg = self.bridge.cv2_to_imgmsg(annotated, encoding='bgr8')
+                debug_msg.header.stamp = self.get_clock().now().to_msg()
+                self._debug_pub.publish(debug_msg)
+            except Exception as e:
+                self.get_logger().error(f"cv2_to_imgmsg (debug) failed: {e}")
 
     # ====================================================================== #
     # MediaPipe detection

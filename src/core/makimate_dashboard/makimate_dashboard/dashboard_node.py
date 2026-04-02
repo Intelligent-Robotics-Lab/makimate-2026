@@ -148,7 +148,7 @@ class DashboardNode(Node):
                 "score": float(f.confidence_score),
                 "speaking": f.is_speaking,
             }
-            for f in msg.faces
+            for f in msg.faces[:2]  # top 2 faces by attention score
         ]
         payload = json.dumps({"type": "face_tracks", "faces": faces})
         asyncio.run_coroutine_threadsafe(self._broadcast(payload), self._loop)
