@@ -229,6 +229,7 @@ class FaceTracker(Node):
         self._fps_last_time: float = time.monotonic()
         self._session_faces: Dict[str, List[np.ndarray]] = {}  # session-only, cleared on sleep
         self._last_detect_time: float = 0.0
+        self._last_recognition_time: float = 0.0
 
         # ------------------------------------------------------------------ #
         # cv_bridge
@@ -337,9 +338,11 @@ class FaceTracker(Node):
         self._update_tracker(detections, w_img, h_img)
 
         # ------------------------------------------------------------------
-        # Step 3: Run face_recognition every N frames (CPU budget)
+        # Step 3: Run face_recognition at most once every 3 seconds.
+        # frame_count-based (every N frames at 30fps = 3x/sec) pegs the Pi CPU.
         # ------------------------------------------------------------------
-        if self.frame_count % self.recognition_interval == 0 and (self.face_db or self._session_faces):
+        if now - self._last_recognition_time >= 3.0 and (self.face_db or self._session_faces):
+            self._last_recognition_time = now
             self._run_recognition(frame)
 
         # ------------------------------------------------------------------
