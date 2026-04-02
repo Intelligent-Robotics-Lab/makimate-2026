@@ -185,6 +185,17 @@ class ASRCommandRouter(Node):
         if not text:
             return
 
+        # Drop Whisper hallucinations: repetitive phrases where one word
+        # makes up >60% of all words (e.g. "I'm sorry I'm sorry I'm sorry...")
+        words = low.split()
+        if len(words) >= 6:
+            most_common_count = max(words.count(w) for w in set(words))
+            if most_common_count / len(words) > 0.6:
+                self.get_logger().warn(
+                    f"Dropping likely Whisper hallucination: {text[:80]!r}"
+                )
+                return
+
         self.get_logger().info(
             f"AICommandRouter received: {text!r} "
             f"(awake={self._awake}, pending_sleep={self._pending_sleep})"
