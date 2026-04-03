@@ -566,8 +566,13 @@ class MakiBehavior(Node):
 
         MAX_YAW = 15.0    # stay within hardware clamped range to avoid integrator windup
         MAX_PITCH = 14.0
-        K_YAW = 0.6      # proportional gain: face_pos in [-1,1], neck_yaw in degrees
-        K_PITCH = 0.5    # lower = less hunting/oscillation at steady state
+
+        # Dual-zone gain: larger step when far from center (fast acquisition),
+        # smaller step when close (prevents oscillation while holding position).
+        # Without this, the integrating controller hunts / wobbles at steady state
+        # because camera latency + DXL smoothing delay add ~350ms of loop lag.
+        K_YAW   = 0.55 if abs(x) > 0.25 else 0.18
+        K_PITCH = 0.45 if abs(y) > 0.25 else 0.15
 
         # x>0 → face right of center → Maki turns right → neck_yaw negative
         # Camera is mirrored: right-of-center in image = Maki's left → flip sign

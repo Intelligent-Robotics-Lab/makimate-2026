@@ -63,7 +63,7 @@ class MakiDxl6(Node):
         self.declare_parameter('port_name', '/dev/ttyACM0')
         self.declare_parameter('baud_rate', 57600)
         self.declare_parameter('ids', [1, 2, 3, 4, 5, 6])
-        self.declare_parameter('smoothing_alpha', 0.18)  # Smoothing factor (0.05-0.5)
+        self.declare_parameter('smoothing_alpha', 0.13)  # Smoothing factor (0.05-0.5)
         self.declare_parameter('update_rate', 20.0)     # Hz — 57600 baud fits ~6 motors at 20Hz
         self.declare_parameter('motor_config_file', _DEFAULT_CONFIG_PATH)
 
