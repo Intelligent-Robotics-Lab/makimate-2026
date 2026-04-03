@@ -233,6 +233,7 @@ const PARAMS = {
     {n:"vad_aggressiveness",  l:"VAD Aggressiveness (0-3)", t:"i", min:0,   max:3,    step:1},
     {n:"silence_ms",          l:"Silence Gap (ms)",         t:"i", min:200, max:1200, step:50},
     {n:"no_speech_threshold", l:"No-Speech Threshold",      t:"f", min:.1,  max:.95,  step:.05},
+    {n:"rms_threshold",       l:"RMS Gate (0=off, ~0.02=close-only)", t:"f", min:0, max:.1, step:.005},
   ],
   ai_command_router: [
     {n:"wake_phrase",      l:"Wake Phrase",             t:"s"},
