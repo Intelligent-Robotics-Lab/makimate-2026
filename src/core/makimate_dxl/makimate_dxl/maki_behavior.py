@@ -72,6 +72,7 @@ class MakiBehavior(Node):
         self.no_face_threshold = 30
 
         self.search_mode = False
+        self._scan_start_time = 0.0   # time.time() when circle_scan last started
 
         # ------------------------------------------
         # Exit-direction coasting (follow face out of frame)
@@ -331,6 +332,7 @@ class MakiBehavior(Node):
     #   → creates natural "looking around" behavior
     # ==========================================
     def start_circle_scan(self):
+        self._scan_start_time = time.time()
         # No internal smoothing — send target directly so the DXL does
         # all the smoothing and the head actually reaches full amplitude.
         state = {
@@ -538,7 +540,7 @@ class MakiBehavior(Node):
             return
 
         x, y = msg.data
-        DEADZONE = 0.05
+        DEADZONE = 0.08
         if abs(x) < DEADZONE:
             x = 0.0
         if abs(y) < DEADZONE:
@@ -564,8 +566,8 @@ class MakiBehavior(Node):
 
         MAX_YAW = 15.0    # stay within hardware clamped range to avoid integrator windup
         MAX_PITCH = 14.0
-        K_YAW = 1.0      # proportional gain: face_pos in [-1,1], neck_yaw in degrees
-        K_PITCH = 0.8
+        K_YAW = 0.6      # proportional gain: face_pos in [-1,1], neck_yaw in degrees
+        K_PITCH = 0.5    # lower = less hunting/oscillation at steady state
 
         # x>0 → face right of center → Maki turns right → neck_yaw negative
         # Camera is mirrored: right-of-center in image = Maki's left → flip sign
@@ -681,8 +683,14 @@ class MakiBehavior(Node):
                 self.get_logger().info("Monologue triggered: Hello, I am Maki Mate.")
                 self.monologue_spoken = True
 
-        # If we were searching, switch back to tracking
+        # If we were searching, switch back to tracking — but only after the
+        # head has had time to actually move away from the face.  Without this
+        # guard, a brief tracker dropout triggers scan→immediate-redetect→tracking
+        # before the head moves at all, creating a jarring micro-jump.
+        MIN_SCAN_DURATION = 2.0  # seconds before scan can be interrupted by a face
         if self.search_mode:
+            if (time.time() - self._scan_start_time) < MIN_SCAN_DURATION:
+                return  # too soon — let the head finish its first scan move
             self.get_logger().info(
                 "Face detected while searching → switching to look_at_user."
             )

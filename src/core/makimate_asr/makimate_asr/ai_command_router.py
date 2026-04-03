@@ -19,7 +19,7 @@ FUSED_THRESHOLD = 0.30
 # Add more as you discover them in the logs.
 _MAKI_ALIASES = [
     "mock", "mockey", "mocky", "makey", "mackey", "mackie",
-    "marky", "markee", "markey", "maki mate", "mockey mate",
+    "marky", "markee", "markey", "maki mate", "mockey mate", "rocky", "Rocky",
 ]
 
 

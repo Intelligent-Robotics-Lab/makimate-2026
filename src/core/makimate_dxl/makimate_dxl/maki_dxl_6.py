@@ -104,6 +104,17 @@ class MakiDxl6(Node):
         self.smoothing_alpha = float(self.get_parameter('smoothing_alpha').value)
         update_rate = float(self.get_parameter('update_rate').value)
 
+        # Per-motor alpha: eyes snap instantly (1.0), lids are quick (0.5),
+        # neck uses the tunable smoothing_alpha parameter.
+        _EYE_IDS = {1, 4}   # eye_pitch, eye_yaw
+        _LID_IDS = {5, 6}   # lid_left, lid_right
+        self._smoothing_alphas = [
+            1.0 if mid in _EYE_IDS else
+            0.5 if mid in _LID_IDS else
+            self.smoothing_alpha
+            for mid in self.ids
+        ]
+
         # ----------------------------------------
         # SMOOTHING STATE — seeded from actual motor positions after torque enable
         # ----------------------------------------
@@ -204,6 +215,15 @@ class MakiDxl6(Node):
         for p in params:
             if p.name == 'smoothing_alpha':
                 self.smoothing_alpha = float(p.value)
+                # Rebuild per-motor alphas (eyes/lids stay at their fixed values)
+                _EYE_IDS = {1, 4}
+                _LID_IDS = {5, 6}
+                self._smoothing_alphas = [
+                    1.0 if mid in _EYE_IDS else
+                    0.5 if mid in _LID_IDS else
+                    self.smoothing_alpha
+                    for mid in self.ids
+                ]
                 self.get_logger().info(f'[live] smoothing_alpha = {self.smoothing_alpha}')
         return SetParametersResult(successful=True)
 
@@ -264,10 +284,13 @@ class MakiDxl6(Node):
     def _smooth_update(self):
         """Smoothly interpolate toward target positions and send to servos."""
         for idx, dxl_id in enumerate(self.ids):
-            # Exponential smoothing: gradually move current toward target
-            self.current_positions[idx] += self.smoothing_alpha * (
-                self.target_positions[idx] - self.current_positions[idx]
-            )
+            delta = self.target_positions[idx] - self.current_positions[idx]
+            # Snap when very close to target — stops the servo from hunting at
+            # steady state (endless micro-corrections cause visible wobble)
+            if abs(delta) < 0.15:
+                self.current_positions[idx] = self.target_positions[idx]
+            else:
+                self.current_positions[idx] += self._smoothing_alphas[idx] * delta
 
             # Convert to ticks
             ticks = self._deg_to_ticks_for_id(dxl_id, self.current_positions[idx])

@@ -12,10 +12,11 @@ Improvements over the old fixed-2s-polling node:
 """
 
 import io
+import re
 import threading
 import time
 import wave
-from collections import deque
+from collections import Counter, deque
 from typing import Optional
 
 import numpy as np
@@ -36,6 +37,28 @@ NOISE_WORDS = {
     'huh', 'h', 'uh', 'um', 'hmm', 'mm', 'ah', 'eh', 'oh',
     'a', 'the', 'and', 'you', 'thank', 'thanks',
 }
+
+# Known Whisper hallucination phrases (startswith match on lowercased text).
+# These are phrases Whisper emits when given near-silence or ambient noise.
+HALLUCINATION_PREFIXES = (
+    "i'm going to",
+    "i am going to",
+    "thank you for watching",
+    "thanks for watching",
+    "please subscribe",
+    "subscribe to",
+    "transcribed by",
+    "all rights reserved",
+    "visit our website",
+    "for more information",
+    "in this video",
+    "in the next video",
+    "check out our",
+    "don't forget to",
+    "like and subscribe",
+)
+
+_CLAUSE_SPLIT = re.compile(r'[,\.!?]+\s*')
 
 
 # ---- VAD chunker ------------------------------------------------------------
@@ -332,10 +355,28 @@ class ReSpeakerWhisperASR(Node):
     def _filter(self, text: str) -> Optional[str]:
         if not text:
             return None
+
+        # Single noise word
         words = text.split()
         if len(words) == 1 and words[0].lower().strip('.,!?') in NOISE_WORDS:
             self.get_logger().debug(f"Filtered noise: {text!r}")
             return None
+
+        # Known Whisper hallucination phrases
+        lower = text.lower().strip()
+        for prefix in HALLUCINATION_PREFIXES:
+            if lower.startswith(prefix):
+                self.get_logger().debug(f"Filtered hallucination: {text!r:.80}")
+                return None
+
+        # Repetition loop: same clause appears 3+ times → hallucination
+        clauses = [c.strip() for c in _CLAUSE_SPLIT.split(lower) if len(c.strip()) > 8]
+        if len(clauses) >= 3:
+            counts = Counter(clauses)
+            if counts.most_common(1)[0][1] >= 3:
+                self.get_logger().debug(f"Filtered repetition loop: {text!r:.80}")
+                return None
+
         return text
 
     # ------------------------------------------------------------------ #
