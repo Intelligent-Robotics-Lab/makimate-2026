@@ -6,6 +6,7 @@ import random
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String, Float64MultiArray, Bool, Int32MultiArray, Int32
+from rcl_interfaces.msg import SetParametersResult
 
 
 class MakiBehavior(Node):
@@ -17,6 +18,11 @@ class MakiBehavior(Node):
         # ------------------------------------------
         self.declare_parameter('enable_monologue', False)
         self.enable_monologue = bool(self.get_parameter('enable_monologue').value)
+        self.declare_parameter('track_gain_yaw',   0.45)
+        self.declare_parameter('track_gain_pitch',  0.35)
+        self.track_gain_yaw   = float(self.get_parameter('track_gain_yaw').value)
+        self.track_gain_pitch = float(self.get_parameter('track_gain_pitch').value)
+        self.add_on_set_parameters_callback(self._on_params)
         self.get_logger().info(f"Monologue enabled: {self.enable_monologue}")
 
         # ------------------------------------------
@@ -134,6 +140,16 @@ class MakiBehavior(Node):
         )
 
         self.get_logger().info("MakiBehavior ready. Waiting for /maki/behavior commands.")
+
+    def _on_params(self, params):
+        for p in params:
+            if p.name == 'track_gain_yaw':
+                self.track_gain_yaw = float(p.value)
+                self.get_logger().info(f'[live] track_gain_yaw = {self.track_gain_yaw}')
+            elif p.name == 'track_gain_pitch':
+                self.track_gain_pitch = float(p.value)
+                self.get_logger().info(f'[live] track_gain_pitch = {self.track_gain_pitch}')
+        return SetParametersResult(successful=True)
 
     # ==========================================
     # Awake handler — auto enable/disable tracking
@@ -582,8 +598,8 @@ class MakiBehavior(Node):
 
         MAX_YAW = 15.0    # stay within hardware clamped range to avoid integrator windup
         MAX_PITCH = 14.0
-        K_YAW   = 0.45
-        K_PITCH = 0.35
+        K_YAW   = self.track_gain_yaw
+        K_PITCH = self.track_gain_pitch
 
         # x>0 → face right of center → Maki turns right → neck_yaw negative
         # Camera is mirrored: right-of-center in image = Maki's left → flip sign
