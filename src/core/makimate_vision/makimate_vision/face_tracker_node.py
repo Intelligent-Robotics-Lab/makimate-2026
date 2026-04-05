@@ -28,6 +28,7 @@ import json
 import math
 import collections
 import time
+import threading
 from typing import Dict, List, Optional, Tuple
 
 import urllib.request
@@ -207,7 +208,7 @@ class FaceTracker(Node):
 
         options = FaceLandmarkerOptions(
             base_options=mp_python.BaseOptions(model_asset_path=model_path),
-            num_faces=10,
+            num_faces=3,
             running_mode=RunningMode.IMAGE,
         )
         self.face_landmarker = FaceLandmarker.create_from_options(options)
@@ -238,6 +239,8 @@ class FaceTracker(Node):
         # MediaPipe briefly misses the face.
         self._last_valid_bbox: List[int] = [-1, -1, -1, -1]
         self._last_valid_bbox_time: float = 0.0
+        # Background thread for face_recognition so it never blocks detection
+        self._recog_thread: Optional[threading.Thread] = None
 
         # ------------------------------------------------------------------ #
         # cv_bridge
@@ -351,14 +354,18 @@ class FaceTracker(Node):
         self._update_tracker(detections, w_img, h_img)
 
         # ------------------------------------------------------------------
-        # Step 3: Run face_recognition at most once every 3 seconds.
+        # Step 3: Run face_recognition in a background thread so it never
+        # blocks the detection loop.  dlib encoding on a Pi can take 500ms–2s
+        # which would cause the grace period to expire and trigger false dropouts.
         # ------------------------------------------------------------------
-        if now - self._last_recognition_time >= 3.0 and (self.face_db or self._session_faces):
+        recog_idle = self._recog_thread is None or not self._recog_thread.is_alive()
+        if recog_idle and now - self._last_recognition_time >= 3.0 and (self.face_db or self._session_faces):
             self._last_recognition_time = now
-            t0 = time.monotonic()
-            self._run_recognition(frame)
-            t1 = time.monotonic()
-            self.get_logger().warn(f'[TIMING] recognition: {(t1-t0)*1000:.0f}ms')
+            frame_copy = frame.copy()
+            self._recog_thread = threading.Thread(
+                target=self._run_recognition_bg, args=(frame_copy,), daemon=True
+            )
+            self._recog_thread.start()
 
         # ------------------------------------------------------------------
         # Step 4: Score every active track
@@ -443,7 +450,7 @@ class FaceTracker(Node):
             bbox_msg.data = list(scored_tracks[0].bbox)
             self._last_valid_bbox = list(scored_tracks[0].bbox)
             self._last_valid_bbox_time = now
-        elif (now - self._last_valid_bbox_time) < 0.5:
+        elif (now - self._last_valid_bbox_time) < 2.0:
             bbox_msg.data = self._last_valid_bbox  # hold last good position
         else:
             bbox_msg.data = [-1, -1, -1, -1]
@@ -730,6 +737,12 @@ class FaceTracker(Node):
                 json.dump(raw, f, indent=2)
         except Exception as e:
             self.get_logger().error(f"FaceTracker: Failed to save face DB: {e}")
+
+    def _run_recognition_bg(self, frame: np.ndarray):
+        t0 = time.monotonic()
+        self._run_recognition(frame)
+        elapsed = (time.monotonic() - t0) * 1000
+        self.get_logger().info(f'[TIMING] recognition (bg thread): {elapsed:.0f}ms')
 
     def _run_recognition(self, frame: np.ndarray):
         """

@@ -67,9 +67,9 @@ class MakiBehavior(Node):
         self.face_present = False
         self.no_face_counter = 0
 
-        # At ~15 Hz, 30 counts ≈ 2 seconds no-face before searching.
-        # (Plus ~1.2 s of exit-direction coasting = ~3.2 s total.)
-        self.no_face_threshold = 30
+        # At ~15 Hz, 90 counts ≈ 6 seconds no-face before searching.
+        # High threshold prevents Pi CPU spikes from triggering false scan mode.
+        self.no_face_threshold = 90
 
         self.search_mode = False
         self._scan_start_time = 0.0   # time.time() when circle_scan last started
@@ -530,6 +530,7 @@ class MakiBehavior(Node):
         self.look_at_user_enabled = True
         self.yaw_cmd = self.last_yaw
         self.pitch_cmd = self.last_pitch
+        self._stable_frames = 0
         self.get_logger().info("Look-at-user mode enabled.")
 
     def on_face_pos(self, msg: Float64MultiArray):
@@ -545,6 +546,20 @@ class MakiBehavior(Node):
             x = 0.0
         if abs(y) < DEADZONE:
             y = 0.0
+
+        # When face is stably centered, stop sending joint goals entirely.
+        # Continuous 15Hz writes re-excite the servo and amplify mechanical wobble.
+        # We still send at 1Hz so blinks keep firing.
+        if x == 0.0 and y == 0.0:
+            self._stable_frames += 1
+        else:
+            self._stable_frames = 0
+
+        STABLE_THRESHOLD = 8   # frames (~0.5s) before we start suppressing
+        IDLE_SEND_PERIOD = 15  # send 1 in every N frames while stable (~1Hz)
+        if self._stable_frames > STABLE_THRESHOLD:
+            if (self._stable_frames % IDLE_SEND_PERIOD) != 0:
+                return
 
         # Track face velocity for exit-direction coasting
         now = time.time()
@@ -562,17 +577,13 @@ class MakiBehavior(Node):
         self._last_face_x = x
         self._last_face_y = y
         self._last_face_pos_time = now
-        self._coast_remaining = 0  # face present — cancel any pending coast
+        self._coast_remaining = 0   # face present — cancel any pending coast
+        self._stable_frames = getattr(self, '_stable_frames', 0)
 
         MAX_YAW = 15.0    # stay within hardware clamped range to avoid integrator windup
         MAX_PITCH = 14.0
-
-        # Dual-zone gain: larger step when far from center (fast acquisition),
-        # smaller step when close (prevents oscillation while holding position).
-        # Without this, the integrating controller hunts / wobbles at steady state
-        # because camera latency + DXL smoothing delay add ~350ms of loop lag.
-        K_YAW   = 0.55 if abs(x) > 0.25 else 0.18
-        K_PITCH = 0.45 if abs(y) > 0.25 else 0.15
+        K_YAW   = 0.45
+        K_PITCH = 0.35
 
         # x>0 → face right of center → Maki turns right → neck_yaw negative
         # Camera is mirrored: right-of-center in image = Maki's left → flip sign
