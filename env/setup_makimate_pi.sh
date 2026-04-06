@@ -32,12 +32,30 @@ fi
 
 # ---- Helper -----------------------------------------------------------------
 step() { echo; echo ">>> STEP $1/$TOTAL_STEPS: $2"; }
-TOTAL_STEPS=10
+TOTAL_STEPS=12
 
 # =============================================================================
-# Step 1 — System apt packages
+# Step 1 — ROS 2 Jazzy apt repository
 # =============================================================================
-step 1 "Installing system apt packages"
+step 1 "Adding ROS 2 Jazzy apt repository"
+ROS_KEYRING="/usr/share/keyrings/ros-archive-keyring.gpg"
+ROS_LIST="/etc/apt/sources.list.d/ros2.list"
+if [[ -f "$ROS_LIST" ]]; then
+  echo "  ROS 2 apt repo already configured — skipping."
+else
+  sudo apt-get install -y curl
+  sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+    -o "$ROS_KEYRING"
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=$ROS_KEYRING] \
+http://packages.ros.org/ros2/ubuntu $CODENAME main" \
+    | sudo tee "$ROS_LIST" > /dev/null
+  echo "  ROS 2 repo added."
+fi
+
+# =============================================================================
+# Step 2 — System apt packages
+# =============================================================================
+step 2 "Installing system apt packages"
 sudo apt-get update -qq
 
 APT_FILE="$REPO_DIR/env/apt_extra.txt"
@@ -61,9 +79,9 @@ sudo apt-get install -y \
   || true
 
 # =============================================================================
-# Step 2 — Hostname (maki.local mDNS)
+# Step 3 — Hostname (maki.local mDNS)
 # =============================================================================
-step 2 "Setting hostname to 'maki' (accessible as maki.local)"
+step 3 "Setting hostname to 'maki' (accessible as maki.local)"
 CURRENT_HOST=$(hostname)
 if [[ "$CURRENT_HOST" != "maki" ]]; then
   sudo hostnamectl set-hostname maki
@@ -78,9 +96,9 @@ sudo systemctl enable avahi-daemon
 sudo systemctl start avahi-daemon
 
 # =============================================================================
-# Step 3 — udev rules (ReSpeaker + Dynamixel)
+# Step 4 — udev rules (ReSpeaker + Dynamixel)
 # =============================================================================
-step 3 "Setting up udev rules"
+step 4 "Setting up udev rules"
 bash "$REPO_DIR/scripts/install_respeaker_udev.sh"
 
 # Dynamixel USB serial rule (ttyACM / ttyUSB access without sudo)
@@ -99,9 +117,9 @@ if ! groups | grep -qw dialout; then
 fi
 
 # =============================================================================
-# Step 3 — ROS 2 dependencies via rosdep
+# Step 5 — ROS 2 dependencies via rosdep
 # =============================================================================
-step 4 "Installing ROS 2 package dependencies via rosdep"
+step 5 "Installing ROS 2 package dependencies via rosdep"
 if [[ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]]; then
   sudo rosdep init || true
 fi
@@ -109,9 +127,9 @@ rosdep update --rosdistro jazzy
 rosdep install --from-paths src --ignore-src -y --rosdistro jazzy
 
 # =============================================================================
-# Step 4 — Python dependencies (system-wide for ROS node compatibility)
+# Step 6 — Python dependencies (system-wide for ROS node compatibility)
 # =============================================================================
-step 5 "Installing Python dependencies"
+step 6 "Installing Python dependencies"
 # Use system Python so ROS nodes work without venv activation.
 # --break-system-packages is required on Ubuntu 24.04.
 sudo /usr/bin/python3 -m pip install \
@@ -119,9 +137,9 @@ sudo /usr/bin/python3 -m pip install \
   -r "$REPO_DIR/env/pi_requirements.txt"
 
 # =============================================================================
-# Step 5 — Piper TTS binary
+# Step 7 — Piper TTS binary
 # =============================================================================
-step 6 "Extracting Piper TTS binary"
+step 7 "Extracting Piper TTS binary"
 PIPER_DIR="$REPO_DIR/piper_bin"
 PIPER_ARCHIVE="$PIPER_DIR/piper_linux_aarch64.tar.gz"
 PIPER_BIN="$PIPER_DIR/piper/piper"
@@ -139,9 +157,9 @@ else
 fi
 
 # =============================================================================
-# Step 6 — Vosk ASR models
+# Step 8 — Vosk ASR models
 # =============================================================================
-step 7 "Checking Vosk models"
+step 8 "Checking Vosk models"
 VOSK_DIR="$HOME/vosk_models"
 mkdir -p "$VOSK_DIR"
 
@@ -173,9 +191,9 @@ else
 fi
 
 # =============================================================================
-# Step 7 — ALSA dsnoop config (shared mic access for Vosk + Whisper)
+# Step 9 — ALSA dsnoop config (shared mic access for Vosk + Whisper)
 # =============================================================================
-step 8 "Writing ~/.asoundrc (dsnoop for ReSpeaker shared capture)"
+step 9 "Writing ~/.asoundrc (dsnoop for ReSpeaker shared capture)"
 ASOUNDRC="$HOME/.asoundrc"
 if [[ -f "$ASOUNDRC" ]] && grep -q "respeaker_shared" "$ASOUNDRC"; then
   echo "  ~/.asoundrc already contains respeaker_shared — skipping."
@@ -201,9 +219,9 @@ ASOUNDRC_EOF
 fi
 
 # =============================================================================
-# Step 9 — Install systemd service (auto-start on boot)
+# Step 10 — Install systemd service (auto-start on boot)
 # =============================================================================
-step 9 "Installing makimate.service (auto-start on boot)"
+step 10 "Installing makimate.service (auto-start on boot)"
 chmod +x "$REPO_DIR/scripts/start_makimate.sh"
 SERVICE_SRC="$REPO_DIR/env/makimate.service"
 SERVICE_DST="/etc/systemd/system/makimate.service"
@@ -218,9 +236,19 @@ echo "  Start now:  sudo systemctl start makimate"
 echo "  View logs:  journalctl -u makimate -f"
 
 # =============================================================================
-# Step 10 — Build ROS workspace
+# Step 11 — sudoers: allow dashboard to restart makimate.service without password
 # =============================================================================
-step 10 "Building ROS workspace"
+step 11 "Configuring sudoers for makimate service restart"
+SUDOERS_FILE="/etc/sudoers.d/makimate-restart"
+echo "$USER ALL=(ALL) NOPASSWD: /bin/systemctl restart makimate.service" \
+  | sudo tee "$SUDOERS_FILE" > /dev/null
+sudo chmod 0440 "$SUDOERS_FILE"
+echo "  Sudoers rule written to $SUDOERS_FILE"
+
+# =============================================================================
+# Step 12 — Build ROS workspace
+# =============================================================================
+step 12 "Building ROS workspace"
 source /opt/ros/jazzy/setup.bash
 colcon build --symlink-install 2>&1 | tail -20
 

@@ -1,4 +1,4 @@
-# makimate-2026
+# MakiMate Winter 2026
 
 
 # Table of Contents
@@ -14,44 +14,22 @@
 
 # Setup
 ## **Raspberry Pi**
-1) Open terminal on the Raspberry Pi
-2) `git clone <repo> ~/makimate-2026`
+1) Flash Ubuntu 24.04 to the Pi 
+2) `git clone https://github.com/Intelligent-Robotics-Lab/makimate-2026.git`
 3) `cd ~/makimate-2026`
 4) `bash env/setup_makimate_pi.sh`
 5) `python3 tools/calibrate_motors.py`
 6) Then, go to config/motor_limits.yaml and update limits if needed.
-
-## **Development Environment**
-1) Install VScode: https://code.visualstudio.com/
-2) Install Extension "Remote - SSH" by Microsoft: https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-ssh
-3) On the Raspberry Pi, install and enable SSH: `sudo systemctl enable ssh`, `sudo systemctl start ssh`
-4) Check status with `systemctl status ssh`
-5) Type `hostname -I`
-6) In VScode, press `Ctrl+Shift+P` and search for `Remote-SSH: Connect to Host`. Enter `<name>@<pi-ip-address>` and enter the password (Pi authentication password).
-
----
-
-# Git Commands
-- `git pull origin master`
-- `git commit -m 'Some message about the change'`
-- `git push origin master`
-## To commit changes in one folder: 
-```
-git add src/makimate_asr/
-git commit -m "Updated ASR (example)"
-git push
-```
+7) `sudo systemctl start makimate`
 
 ---
 
 # Webpage Dashboard
 The dashboard is used for real-time logging and modification of Makimate's ROS parameters. Additionally, you can change the LLM model and server URL to be used, along with changing what ASR model is used.
 ### Opening the Webpage
-1) In the Pi's terminal, run the following two commands:
-2) `source ~/makimate-2026/install/setup.bash`
-3) `ros2 run makimate_dashboard dashboard`
-4) On your browser, type in `http://<pi-ip>:8080`
-5) The <pi-ip> is the same one used for SSH; obtain it by running `hostname -I` in the Pi's terminal.
+1) On your browser, type in `http://maki.local:8080`
+2) In the case that your network blocks mDNS, type in `https://<pi-ip>:8080`
+5) The <pi-ip> is obtained by running `hostname -I` in the Pi's terminal.
 
 ---
 
@@ -59,7 +37,7 @@ The dashboard is used for real-time logging and modification of Makimate's ROS p
 Servers are required for LLM usage and can optionally be used to run larger ASR models as well. 
 
 ## Linux ASR Server Setup
-1) Clone the repo: git clone https://github.com/Intelligent-Robotics-Lab/makimate-2026.git
+1) Clone the repo: git clone `https://github.com/Intelligent-Robotics-Lab/makimate-2026.git`
 3) Run `cd ~/makimate-2026/makimate-asr-server && bash setup_server.sh`
 5) Run the server (base model): `python server.py`; note that if a different port is needed, use: `python server.py --port 8002`. To select a model, use `python server.py --model medium`.
 6) Possible models to use: `tiny`, `base`, `small`, `medium`, `large-v3`, `distil-large-v3`
