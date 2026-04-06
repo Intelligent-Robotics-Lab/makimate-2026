@@ -62,7 +62,6 @@ class MakiBehavior(Node):
         # Face tracking state (look_at_user)
         # ------------------------------------------
         self.look_at_user_enabled = False
-        self._tracking_hold_until = 0.0   # time.time() after which face tracking may publish
         self.yaw_cmd = 0.0
         self.pitch_cmd = 0.0
         self.last_yaw = 0.0
@@ -547,17 +546,11 @@ class MakiBehavior(Node):
         self.look_at_user_enabled = True
         self.yaw_cmd = self.last_yaw
         self.pitch_cmd = self.last_pitch
-        self._stable_frames = 0
-        # Hold off face-tracking sends for 1s so the wake expression can finish
-        # before we start overriding it with joint goals at 15Hz.
-        self._tracking_hold_until = time.time() + 1.0
         self.get_logger().info("Look-at-user mode enabled.")
 
     def on_face_pos(self, msg: Float64MultiArray):
         if not self.look_at_user_enabled:
             return
-        if time.time() < self._tracking_hold_until:
-            return  # let wake expression finish before face tracking takes over
 
         if len(msg.data) != 2:
             return
@@ -568,20 +561,6 @@ class MakiBehavior(Node):
             x = 0.0
         if abs(y) < DEADZONE:
             y = 0.0
-
-        # When face is stably centered, stop sending joint goals entirely.
-        # Continuous 15Hz writes re-excite the servo and amplify mechanical wobble.
-        # We still send at 1Hz so blinks keep firing.
-        if x == 0.0 and y == 0.0:
-            self._stable_frames += 1
-        else:
-            self._stable_frames = 0
-
-        STABLE_THRESHOLD = 8   # frames (~0.5s) before we start suppressing
-        IDLE_SEND_PERIOD = 15  # send 1 in every N frames while stable (~1Hz)
-        if self._stable_frames > STABLE_THRESHOLD:
-            if (self._stable_frames % IDLE_SEND_PERIOD) != 0:
-                return
 
         # Track face velocity for exit-direction coasting
         now = time.time()
@@ -600,7 +579,6 @@ class MakiBehavior(Node):
         self._last_face_y = y
         self._last_face_pos_time = now
         self._coast_remaining = 0   # face present — cancel any pending coast
-        self._stable_frames = getattr(self, '_stable_frames', 0)
 
         MAX_YAW = 15.0    # stay within hardware clamped range to avoid integrator windup
         MAX_PITCH = 14.0
