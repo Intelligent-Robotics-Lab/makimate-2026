@@ -31,6 +31,8 @@ ffmpeg
 # Camera / vision utilities
 v4l-utils
 python3-opencv
+libcamera-dev
+libcamera-apps
 
 # Hardware utilities
 i2c-tools
