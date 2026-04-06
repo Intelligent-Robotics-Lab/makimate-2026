@@ -127,7 +127,8 @@ if [[ ! -f /etc/ros/rosdep/sources.list.d/20-default.list ]]; then
   sudo rosdep init || true
 fi
 rosdep update --rosdistro jazzy
-rosdep install --from-paths src --ignore-src -y --rosdistro jazzy
+rosdep install --from-paths src --ignore-src -y --rosdistro jazzy \
+  --skip-keys "makimate_interfaces"
 
 # =============================================================================
 # Step 6 — Python dependencies (system-wide for ROS node compatibility)
