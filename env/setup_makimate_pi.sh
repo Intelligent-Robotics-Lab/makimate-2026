@@ -136,6 +136,13 @@ rosdep install --from-paths src --ignore-src -y --rosdistro jazzy \
 step 6 "Installing Python dependencies"
 # Use system Python so ROS nodes work without venv activation.
 # --break-system-packages is required on Ubuntu 24.04.
+#
+# Some packages (e.g. typing-extensions) are pre-installed by apt without a
+# pip RECORD file, so pip can't uninstall them when upgrading.  Force-reinstall
+# them via pip first so a proper RECORD file exists, then install everything else.
+sudo /usr/bin/python3 -m pip install \
+  --break-system-packages --force-reinstall \
+  typing-extensions
 sudo /usr/bin/python3 -m pip install \
   --break-system-packages \
   -r "$REPO_DIR/env/pi_requirements.txt"
