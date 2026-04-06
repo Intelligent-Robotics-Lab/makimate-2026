@@ -51,7 +51,8 @@ input[type=checkbox]{accent-color:#f56565;cursor:pointer}
 
 /* ── Param rows ── */
 .ng{margin-bottom:8px}
-.ng-label{font-size:.68em;color:#718096;margin-bottom:4px;padding-left:2px}
+.ng-label{font-size:.68em;color:#718096;margin-bottom:2px;padding-left:2px}
+.ng-desc{font-size:.63em;color:#4a5568;margin-bottom:5px;padding-left:2px;font-style:italic}
 .pr{display:flex;align-items:center;gap:6px;margin-bottom:5px}
 .pr label{font-size:.72em;color:#a0aec0;flex:1;min-width:0}
 .pr input[type=range]{flex:1.5;accent-color:#f56565;min-width:0}
@@ -109,25 +110,6 @@ input[type=checkbox]{accent-color:#f56565;cursor:pointer}
 
   <!-- ── Right panel ── -->
   <div id="right">
-
-    <!-- Parameters -->
-    <div class="sec">
-      <h2>&#9881; Parameters</h2>
-      <div id="param-ui"></div>
-    </div>
-
-    <!-- Camera feed (disabled — too much load on Pi)
-    <div class="sec">
-      <h2>&#128247; Camera</h2>
-      <div style="position:relative;line-height:0">
-        <img id="video-feed"
-             style="width:100%;border-radius:4px;display:none;background:#080a0e">
-        <canvas id="face-canvas"
-                style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;border-radius:4px"></canvas>
-      </div>
-      <div id="cam-status" style="font-size:.65em;color:#4a5568;margin-top:4px"></div>
-    </div>
-    -->
 
     <!-- Robot Control -->
     <div class="sec">
@@ -200,47 +182,71 @@ input[type=checkbox]{accent-color:#f56565;cursor:pointer}
       <div id="whisper-status" style="font-size:.68em;color:#718096;margin-top:-4px;min-height:1.2em"></div>
     </div>
 
+    <!-- Parameters -->
+    <div class="sec">
+      <h2>&#9881; Parameters</h2>
+      <div id="param-ui"></div>
+    </div>
+
   </div><!-- /right -->
 </main>
 
 <script>
 // ───────────────────────────────────────────────────────────────────
+// One-line descriptions shown under each node group header
+// ───────────────────────────────────────────────────────────────────
+const NODE_DESC = {
+  maki_dxl_6:              "Servo smoothing — how fast motors physically move",
+  maki_behavior:           "Head tracking speed and face-search timeout",
+  speaker_recognition_node:"Voice identity matching sensitivity",
+  face_tracker:            "Who Maki gazes at when multiple faces are visible",
+  respeaker_dsp:           "Hardware mic filtering (noise, echo, AGC)",
+  respeaker_whisper_asr:   "Speech recognition — what to listen to and what to reject",
+  ai_command_router:       "Wake / sleep words and reply keyword filter",
+};
+
+// ───────────────────────────────────────────────────────────────────
 // Parameter definitions — keep in sync with PARAM_REGISTRY in
 // dashboard_node.py (only need to add here for UI; server reads all)
+// h: tooltip shown on label hover
 // ───────────────────────────────────────────────────────────────────
 const PARAMS = {
   maki_dxl_6: [
-    {n:"smoothing_alpha",  l:"Smoothing Alpha",         t:"f", min:.05, max:.5,   step:.01},
-    {n:"update_rate",      l:"Update Rate (Hz)",        t:"f", min:10,  max:50,   step:1},
+    {n:"smoothing_alpha", l:"Smoothing Alpha",        t:"f", min:.05, max:.5,  step:.01,  h:"How gradually motors approach their target. Higher = more sluggish but smoother."},
+    {n:"update_rate",     l:"Motor Update Rate (Hz)", t:"f", min:10,  max:50,  step:1,    h:"How often servo commands are sent. 20 Hz is safe at 57600 baud."},
   ],
   maki_behavior: [
-    {n:"no_face_threshold",  l:"No-Face Threshold",      t:"i", min:10,  max:300,  step:5},
-    {n:"track_gain_yaw",     l:"Track Speed Yaw",        t:"f", min:0.05,max:1.5,  step:0.05},
-    {n:"track_gain_pitch",   l:"Track Speed Pitch",      t:"f", min:0.05,max:1.5,  step:0.05},
+    {n:"no_face_threshold", l:"No-Face Timeout (frames)", t:"i", min:10, max:300, step:5,   h:"Frames with no face before entering scan mode. ~15 frames/s, so 90 ≈ 6 s."},
+    {n:"track_gain_yaw",    l:"Track Speed — Left/Right", t:"f", min:.05,max:1.5, step:.05, h:"How aggressively the neck yaws to centre the face. Too high = wobble."},
+    {n:"track_gain_pitch",  l:"Track Speed — Up/Down",    t:"f", min:.05,max:1.5, step:.05, h:"Same as above for pitch. Usually set slightly lower than yaw."},
   ],
   speaker_recognition_node: [
-    {n:"threshold",        l:"Voice ID Threshold",      t:"f", min:.1,  max:.9,   step:.05},
+    {n:"threshold", l:"Voice Match Threshold", t:"f", min:.1, max:.9, step:.05, h:"Cosine distance cutoff for speaker ID. Lower = stricter, fewer false matches."},
   ],
   face_tracker: [
-    {n:"recognition_threshold", l:"Face ID Threshold", t:"f", min:.3,  max:.8,   step:.05},
-    {n:"recognition_interval",  l:"Recog Interval (fr)",t:"i", min:1,   max:60,   step:1},
+    {n:"recognition_threshold", l:"Face ID Threshold",           t:"f", min:.3,  max:.8,  step:.05, h:"face_recognition distance cutoff. Lower = stricter (fewer false matches)."},
+    {n:"recognition_interval",  l:"Face ID Check Interval (fr)", t:"i", min:1,   max:60,  step:1,   h:"Run face recognition every N frames to save CPU."},
+    {n:"weight_centerness",     l:"Gaze: Centerness",            t:"f", min:0,   max:1.0, step:.05, h:"Boosts faces closer to the middle of the frame."},
+    {n:"weight_size",           l:"Gaze: Face Size",             t:"f", min:0,   max:1.0, step:.05, h:"Boosts faces that are larger / closer to the camera."},
+    {n:"weight_lifetime",       l:"Gaze: Track Loyalty",         t:"f", min:0,   max:1.0, step:.05, h:"Favours faces tracked longer — prevents jumping to new arrivals."},
+    {n:"weight_lips",           l:"Gaze: Speaking Priority",     t:"f", min:0,   max:1.0, step:.05, h:"Boosts whoever is talking. Raise to always look at the active speaker."},
   ],
   respeaker_dsp: [
-    {n:"vad_threshold",    l:"VAD Threshold (dB)",      t:"f", min:0,   max:10,   step:.5},
-    {n:"enable_agc",       l:"AGC (Auto Gain Control)", t:"b"},
-    {n:"enable_ns",        l:"Noise Suppression",       t:"b"},
-    {n:"enable_echo",      l:"Echo Cancellation",       t:"b"},
+    {n:"vad_threshold", l:"VAD Threshold (dB)",  t:"f", min:0,  max:10, step:.5, h:"ReSpeaker hardware VAD level. Higher = less sensitive, ignores quieter sounds."},
+    {n:"enable_agc",    l:"Auto Gain Control",    t:"b",                          h:"Automatically adjusts mic gain. Turn off for consistent expo levels."},
+    {n:"enable_ns",     l:"Noise Suppression",    t:"b",                          h:"Hardware background noise reduction."},
+    {n:"enable_echo",   l:"Echo Cancellation",    t:"b",                          h:"Removes Maki's own TTS voice from the mic input."},
   ],
   respeaker_whisper_asr: [
-    {n:"vad_aggressiveness",  l:"VAD Aggressiveness (0-3)", t:"i", min:0,   max:3,    step:1},
-    {n:"silence_ms",          l:"Silence Gap (ms)",         t:"i", min:200, max:1200, step:50},
-    {n:"no_speech_threshold", l:"No-Speech Threshold",      t:"f", min:.1,  max:.95,  step:.05},
-    {n:"rms_threshold",       l:"RMS Gate (0=off, ~0.02=close-only)", t:"f", min:0, max:.1, step:.005},
+    {n:"vad_aggressiveness",  l:"VAD Aggressiveness (0–3)",       t:"i", min:0,   max:3,    step:1,    h:"webrtcvad filter. 3 = most aggressive, rejects quiet/background speech."},
+    {n:"silence_ms",          l:"Silence Gap → End of Utterance", t:"i", min:200, max:1200, step:50,   h:"ms of silence that signals end of speech before sending to Whisper."},
+    {n:"no_speech_threshold", l:"No-Speech Filter",               t:"f", min:.1,  max:.95,  step:.05,  h:"Whisper confidence threshold. Higher = more audio is rejected as non-speech."},
+    {n:"rms_threshold",       l:"RMS Gate (0=off, ~0.02=nearby)", t:"f", min:0,   max:.1,   step:.005, h:"Rejects quiet audio before Whisper sees it. Useful at expo to block distant voices."},
   ],
   ai_command_router: [
-    {n:"wake_phrase",      l:"Wake Phrase",             t:"s"},
-    {n:"sleep_phrase",     l:"Sleep Phrase",            t:"s"},
-    {n:"reply_keyword",    l:"Reply Keyword (blank = always reply)", t:"s"},
+    {n:"wake_phrase",   l:"Wake Phrase",                          t:"s", h:"Maki starts paying attention when it hears this word or phrase."},
+    {n:"sleep_phrase",  l:"Sleep Phrase",                         t:"s", h:"Maki stops listening after hearing this."},
+    {n:"reply_keyword", l:"Reply Keyword (blank = always reply)", t:"s", h:"If set, Maki only responds when this word appears in the utterance."},
   ],
 };
 
@@ -253,10 +259,12 @@ function buildParamUI() {
   for (const [node, ps] of Object.entries(PARAMS)) {
     const g = document.createElement('div');
     g.className = 'ng';
-    g.innerHTML = `<div class="ng-label">${node}</div>`;
+    const desc = NODE_DESC[node] ? `<div class="ng-desc">${NODE_DESC[node]}</div>` : '';
+    g.innerHTML = `<div class="ng-label">${node}</div>${desc}`;
     for (const p of ps) {
       const row = document.createElement('div');
       row.className = 'pr';
+      const tooltip = p.h ? ` title="${p.h}"` : '';
       const mid = p.t === 'b'
         ? `<input type="checkbox" id="v_${node}_${p.n}" style="margin:0 6px">`
         : p.t === 's'
@@ -270,7 +278,7 @@ function buildParamUI() {
               value="${((p.min+p.max)/2).toFixed(p.t==='f'?2:0)}"
               oninput="syncSlider('${node}','${p.n}',this.value)"
               style="width:64px">`;
-      row.innerHTML = `<label>${p.l}</label>${mid}
+      row.innerHTML = `<label${tooltip}>${p.l}</label>${mid}
         <button class="set-btn" id="b_${node}_${p.n}"
           onclick="setParam('${node}','${p.n}')">Set</button>`;
       g.appendChild(row);

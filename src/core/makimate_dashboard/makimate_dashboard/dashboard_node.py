@@ -43,7 +43,7 @@ PARAM_REGISTRY = {
     "maki_dxl_6": ["smoothing_alpha", "update_rate"],
     "maki_behavior": ["no_face_threshold", "track_gain_yaw", "track_gain_pitch"],
     "speaker_recognition_node": ["threshold"],
-    "face_tracker": ["recognition_threshold", "recognition_interval"],
+    "face_tracker": ["recognition_threshold", "recognition_interval", "weight_centerness", "weight_size", "weight_lifetime", "weight_lips"],
     "respeaker_dsp": ["vad_threshold"],
     "respeaker_whisper_asr": ["vad_aggressiveness", "silence_ms", "no_speech_threshold", "rms_threshold"],
     "ai_command_router": ["wake_phrase", "sleep_phrase"],

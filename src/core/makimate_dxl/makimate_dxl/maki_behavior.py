@@ -62,6 +62,7 @@ class MakiBehavior(Node):
         # Face tracking state (look_at_user)
         # ------------------------------------------
         self.look_at_user_enabled = False
+        self._tracking_hold_until = 0.0   # time.time() after which face tracking may publish
         self.yaw_cmd = 0.0
         self.pitch_cmd = 0.0
         self.last_yaw = 0.0
@@ -547,11 +548,16 @@ class MakiBehavior(Node):
         self.yaw_cmd = self.last_yaw
         self.pitch_cmd = self.last_pitch
         self._stable_frames = 0
+        # Hold off face-tracking sends for 1s so the wake expression can finish
+        # before we start overriding it with joint goals at 15Hz.
+        self._tracking_hold_until = time.time() + 1.0
         self.get_logger().info("Look-at-user mode enabled.")
 
     def on_face_pos(self, msg: Float64MultiArray):
         if not self.look_at_user_enabled:
             return
+        if time.time() < self._tracking_hold_until:
+            return  # let wake expression finish before face tracking takes over
 
         if len(msg.data) != 2:
             return
