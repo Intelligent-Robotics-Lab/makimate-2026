@@ -640,12 +640,15 @@ async def _handle(ws: WebSocket, node: DashboardNode, msg: dict):
         asyncio.create_task(_pull_and_rebuild(node, repo))
 
     elif t == "restart_dashboard":
-        asyncio.create_task(_run_cmd_streamed(
-            node,
-            ["sudo", "systemctl", "restart", "makimate.service"],
-            "/",
-            "restart makimate.service",
-        ))
+        # Send status before killing ourselves — the process dies before
+        # _run_cmd_streamed can report success, so we broadcast first.
+        await node._broadcast(json.dumps({"type": "build_start", "cmd": "sudo systemctl restart makimate.service"}))
+        await node._broadcast(json.dumps({"type": "build_line",  "text": "Restarting — connection will drop and reconnect automatically..."}))
+        await node._broadcast(json.dumps({"type": "build_done",  "ok": True}))
+        async def _do_restart():
+            await asyncio.sleep(0.6)
+            subprocess.Popen(["sudo", "systemctl", "restart", "makimate.service"])
+        asyncio.create_task(_do_restart())
 
     elif t == "server_config":
         for key in ("llm_server_url", "llm_model", "whisper_server_url", "whisper_model"):
