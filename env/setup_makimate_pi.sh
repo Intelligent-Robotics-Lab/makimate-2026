@@ -141,7 +141,7 @@ step 6 "Installing Python dependencies"
 # pip RECORD file, so pip can't uninstall them when upgrading.  Force-reinstall
 # them via pip first so a proper RECORD file exists, then install everything else.
 sudo /usr/bin/python3 -m pip install \
-  --break-system-packages --force-reinstall \
+  --break-system-packages --ignore-installed \
   typing-extensions
 sudo /usr/bin/python3 -m pip install \
   --break-system-packages \
