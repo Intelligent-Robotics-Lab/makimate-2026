@@ -492,9 +492,9 @@ CameraNode::CameraNode(const rclcpp::NodeOptions &options)
   // format camera name for calibration file
   const libcamera::ControlList &props = camera->properties();
   std::string cname = camera->id() + '_' + scfg.size.toString();
-  const std::optional<std::string> model = props.get(libcamera::properties::Model);
+  const auto model = props.get(libcamera::properties::Model);
   if (model)
-    cname = model.value() + '_' + cname;
+    cname = std::string(*model) + '_' + cname;
   if (!sensor_size.isNull() && role != libcamera::StreamRole::Raw)
     cname = cname + '_' + cfg->at(1).toString();
 
