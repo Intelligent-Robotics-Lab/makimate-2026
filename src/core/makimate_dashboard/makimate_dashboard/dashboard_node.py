@@ -639,6 +639,14 @@ async def _handle(ws: WebSocket, node: DashboardNode, msg: dict):
         repo = str(_get_repo_root())
         asyncio.create_task(_pull_and_rebuild(node, repo))
 
+    elif t == "restart_dashboard":
+        asyncio.create_task(_run_cmd_streamed(
+            node,
+            ["sudo", "systemctl", "restart", "makimate.service"],
+            "/",
+            "restart makimate.service",
+        ))
+
     elif t == "server_config":
         for key in ("llm_server_url", "llm_model", "whisper_server_url", "whisper_model"):
             if key in msg:

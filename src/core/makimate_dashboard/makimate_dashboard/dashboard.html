@@ -127,6 +127,9 @@ input[type=checkbox]{accent-color:#f56565;cursor:pointer}
         <button class="btn" onclick="doRebuild()">Rebuild</button>
         <button class="btn" onclick="doPullRebuild()">Pull &amp; Rebuild</button>
       </div>
+      <div class="apply-row">
+        <button class="btn" onclick="doRestartDashboard()" title="sudo systemctl restart makimate.service">Restart Dashboard</button>
+      </div>
       <div id="build-out" style="display:none;background:#080a0e;border:1px solid #2d3748;border-radius:4px;padding:6px 8px;font-size:.65em;line-height:1.6;max-height:160px;overflow-y:auto;margin-top:4px;color:#a0aec0;white-space:pre-wrap;word-break:break-all"></div>
     </div>
 
@@ -582,11 +585,12 @@ function onVideoFrame(b64) {
 // ───────────────────────────────────────────────────────────────────
 // Robot control
 // ───────────────────────────────────────────────────────────────────
-function robotStart()    { send({type:'robot_start'}); }
-function robotStop()     { send({type:'robot_stop'}); }
-function doPull()        { openBuildOut(); send({type:'git_pull'}); }
-function doRebuild()     { openBuildOut(); send({type:'rebuild'}); }
-function doPullRebuild() { openBuildOut(); send({type:'pull_rebuild'}); }
+function robotStart()         { send({type:'robot_start'}); }
+function robotStop()          { send({type:'robot_stop'}); }
+function doPull()             { openBuildOut(); send({type:'git_pull'}); }
+function doRebuild()          { openBuildOut(); send({type:'rebuild'}); }
+function doPullRebuild()      { openBuildOut(); send({type:'pull_rebuild'}); }
+function doRestartDashboard() { openBuildOut(); send({type:'restart_dashboard'}); }
 
 function openBuildOut() {
   const el = document.getElementById('build-out');
