@@ -19,7 +19,7 @@
 3) `cd ~/makimate-2026`
 4) `bash env/setup_makimate_pi.sh`
 5) `python3 tools/calibrate_motors.py`
-6) Then, go to config/motor_limits.yaml and update limits if needed.
+6) `colcon build --symlink-install --packages-select makimate_dxl `
 7) `sudo systemctl start makimate`
 
 ---
