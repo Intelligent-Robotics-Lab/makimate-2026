@@ -121,7 +121,9 @@ cv_to_pv(const libcamera::ControlValue &value)
     CASE_CONVERT(Integer32)
     CASE_CONVERT(Integer64)
     CASE_CONVERT(Float)
+#if LIBCAMERA_VER_GE(0, 3, 0)
     CASE_CONVERT(String)
+#endif
     CASE_CONVERT(Rectangle)
     CASE_CONVERT(Size)
 #if LIBCAMERA_VER_GE(0, 4, 0)
@@ -153,8 +155,10 @@ cv_to_pv_type(const libcamera::ControlId *const id)
       return rclcpp::ParameterType::PARAMETER_INTEGER;
     case libcamera::ControlType::ControlTypeFloat:
       return rclcpp::ParameterType::PARAMETER_DOUBLE;
+#if LIBCAMERA_VER_GE(0, 3, 0)
     case libcamera::ControlType::ControlTypeString:
       return rclcpp::ParameterType::PARAMETER_STRING;
+#endif
     case libcamera::ControlType::ControlTypeRectangle:
       return rclcpp::ParameterType::PARAMETER_INTEGER_ARRAY;
     case libcamera::ControlType::ControlTypeSize:
@@ -181,8 +185,10 @@ cv_to_pv_type(const libcamera::ControlId *const id)
       return rclcpp::ParameterType::PARAMETER_INTEGER_ARRAY;
     case libcamera::ControlType::ControlTypeFloat:
       return rclcpp::ParameterType::PARAMETER_DOUBLE_ARRAY;
+#if LIBCAMERA_VER_GE(0, 3, 0)
     case libcamera::ControlType::ControlTypeString:
       return rclcpp::ParameterType::PARAMETER_STRING_ARRAY;
+#endif
     case libcamera::ControlType::ControlTypeRectangle:
       throw unsupported_control(id);
     case libcamera::ControlType::ControlTypeSize:

@@ -44,7 +44,9 @@ pv_to_cv_int_array(const std::vector<int64_t> &values, const libcamera::ControlT
     CASE_CONVERT_INT_ARRAY(Unsigned32)
 #endif
     CASE_CONVERT_INT_ARRAY(Float)
+#if LIBCAMERA_VER_GE(0, 3, 0)
     CASE_INVALID(String)
+#endif
   case libcamera::ControlTypeRectangle:
     if (values.size() != 4)
       throw invalid_conversion("integer array size must be equal to 4 for Rectangle conversion");
@@ -82,7 +84,9 @@ pv_to_cv(const rclcpp::Parameter &parameter, const libcamera::ControlType &type)
       CASE_CONVERT_INT(Integer32)
       CASE_CONVERT_INT(Integer64)
       CASE_CONVERT_INT(Float)
+#if LIBCAMERA_VER_GE(0, 3, 0)
       CASE_NONE(String)
+#endif
       CASE_NONE(Rectangle)
       CASE_NONE(Size)
 #if LIBCAMERA_VER_GE(0, 4, 0)
@@ -95,7 +99,11 @@ pv_to_cv(const rclcpp::Parameter &parameter, const libcamera::ControlType &type)
   case rclcpp::ParameterType::PARAMETER_DOUBLE:
     return CTFloat(parameter.as_double());
   case rclcpp::ParameterType::PARAMETER_STRING:
+#if LIBCAMERA_VER_GE(0, 3, 0)
     return CTString(parameter.as_string());
+#else
+    throw invalid_conversion("string controls not supported by this libcamera version");
+#endif
   case rclcpp::ParameterType::PARAMETER_BYTE_ARRAY:
     return libcamera::Span<const CTByte>(parameter.as_byte_array());
   case rclcpp::ParameterType::PARAMETER_BOOL_ARRAY:
@@ -107,7 +115,11 @@ pv_to_cv(const rclcpp::Parameter &parameter, const libcamera::ControlType &type)
     return libcamera::Span<const CTFloat>(
       std::vector<CTFloat>(parameter.as_double_array().begin(), parameter.as_double_array().end()));
   case rclcpp::ParameterType::PARAMETER_STRING_ARRAY:
+#if LIBCAMERA_VER_GE(0, 3, 0)
     return libcamera::Span<const CTString>(parameter.as_string_array());
+#else
+    throw invalid_conversion("string array controls not supported by this libcamera version");
+#endif
   }
   throw should_not_reach();
 }

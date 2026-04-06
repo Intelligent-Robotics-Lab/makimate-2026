@@ -151,7 +151,9 @@ clamp(const libcamera::ControlValue &value, const libcamera::ControlValue &min,
     CASE_CLAMP(Integer32)
     CASE_CLAMP(Integer64)
     CASE_CLAMP(Float)
+#if LIBCAMERA_VER_GE(0, 3, 0)
     CASE_CLAMP(String)
+#endif
     CASE_CLAMP(Rectangle)
     CASE_CLAMP(Size)
 #if LIBCAMERA_VER_GE(0, 4, 0)
@@ -304,7 +306,9 @@ operator<(const libcamera::ControlValue &lhs, const libcamera::ControlValue &rhs
     CASE_LESS(Integer32)
     CASE_LESS(Integer64)
     CASE_LESS(Float)
+#if LIBCAMERA_VER_GE(0, 3, 0)
     CASE_LESS(String)
+#endif
     CASE_LESS(Rectangle)
     CASE_LESS(Size)
 #if LIBCAMERA_VER_GE(0, 4, 0)
@@ -330,7 +334,9 @@ operator>(const libcamera::ControlValue &lhs, const libcamera::ControlValue &rhs
     CASE_GREATER(Integer32)
     CASE_GREATER(Integer64)
     CASE_GREATER(Float)
+#if LIBCAMERA_VER_GE(0, 3, 0)
     CASE_GREATER(String)
+#endif
     CASE_GREATER(Rectangle)
     CASE_GREATER(Size)
 #if LIBCAMERA_VER_GE(0, 4, 0)

@@ -21,8 +21,8 @@ operator<<(std::ostream &out, const libcamera::CameraManager &camera_manager)
       << ">> cameras:";
   for (size_t id = 0; id < camera_manager.cameras().size(); id++) {
     const std::shared_ptr<libcamera::Camera> camera = camera_manager.cameras().at(id);
-    const std::string name =
-      camera->properties().get(libcamera::properties::Model).value_or("UNDEFINED");
+    const auto model_prop = camera->properties().get(libcamera::properties::Model);
+    const std::string name = model_prop ? std::string(*model_prop) : "UNDEFINED";
     out << std::endl
         << "   " << id << ": " << name << " (" << camera->id() << ")";
   }
