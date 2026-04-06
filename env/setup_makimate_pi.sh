@@ -69,13 +69,16 @@ else
   fi
 fi
 
-# Additional packages needed by makimate (not always in apt_extra.txt)
+# Core tools that must succeed — installed separately so a failure in
+# apt_extra.txt (e.g. missing Docker repo) doesn't silently skip these.
 sudo apt-get install -y \
   python3-pip \
   python3-venv \
   cmake \
   libdlib-dev \
   python3-opencv \
+  python3-rosdep \
+  python3-colcon-common-extensions \
   || true
 
 # =============================================================================
