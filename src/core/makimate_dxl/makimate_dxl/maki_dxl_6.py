@@ -128,6 +128,8 @@ class MakiDxl6(Node):
         self.ADDR_TORQUE_ENABLE = 64
         self.ADDR_GOAL_POSITION = 116
         self.ADDR_PRESENT_POSITION = 132
+        self.ADDR_MAX_POSITION_LIMIT = 48   # EEPROM — write with torque OFF
+        self.ADDR_MIN_POSITION_LIMIT = 52   # EEPROM — write with torque OFF
         self.TORQUE_ENABLE = 1
         self.TORQUE_DISABLE = 0
 
@@ -146,9 +148,22 @@ class MakiDxl6(Node):
             f"Opened Dynamixel port {port_name} @ {baud_rate}bps (IDs {self.ids})"
         )
 
-        # Enable torque — but first write current position as goal position so the
-        # motor holds still on enable instead of snapping to a stale goal register.
+        # Enable torque — but first:
+        #   1. Write EEPROM position limits from yaml so the motor accepts our full
+        #      range regardless of what was previously stored in its EEPROM.
+        #      (EEPROM can only be written while torque is disabled.)
+        #   2. Write current position as goal so the motor holds still on enable
+        #      instead of snapping to a stale goal register.
         for dxl_id in self.ids:
+            self.packet_handler.write4ByteTxRx(
+                self.port_handler, dxl_id,
+                self.ADDR_MAX_POSITION_LIMIT, self.max_ticks[dxl_id]
+            )
+            self.packet_handler.write4ByteTxRx(
+                self.port_handler, dxl_id,
+                self.ADDR_MIN_POSITION_LIMIT, self.min_ticks[dxl_id]
+            )
+
             present, result, _ = self.packet_handler.read4ByteTxRx(
                 self.port_handler, dxl_id, self.ADDR_PRESENT_POSITION
             )
