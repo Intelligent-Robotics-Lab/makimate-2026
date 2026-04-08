@@ -121,8 +121,6 @@ class MakiDxl6(Node):
         # ----------------------------------------
         self.current_positions = [0.0] * len(self.ids)
         self.target_positions = [0.0] * len(self.ids)
-        # Per-motor recovery state: dxl_id → {'reboot_at': float, 'attempts': int}
-        self._recovering: dict = {}
         # Ignore incoming joint goals for this many seconds after startup.
         # The expressions node publishes immediately on boot; if maki_dxl_6 is still
         # initialising (rebooting motors), the queued goals arrive the instant the
@@ -137,8 +135,6 @@ class MakiDxl6(Node):
         self.ADDR_TORQUE_ENABLE = 64
         self.ADDR_GOAL_POSITION = 116
         self.ADDR_PRESENT_POSITION = 132
-        self.ADDR_MAX_POSITION_LIMIT = 48   # EEPROM — write with torque OFF
-        self.ADDR_MIN_POSITION_LIMIT = 52   # EEPROM — write with torque OFF
         self.ADDR_HARDWARE_ERROR_STATUS = 70  # read-only; non-zero = latched fault
         self.TORQUE_ENABLE = 1
         self.TORQUE_DISABLE = 0
@@ -162,11 +158,14 @@ class MakiDxl6(Node):
         #   1. Clear any latched hardware error by rebooting the motor.
         #      Hardware errors survive power cycles (stored in motor EEPROM) and
         #      must be cleared with a REBOOT packet before torque can be enabled.
-        #   2. Write EEPROM position limits from yaml so the motor accepts our full
-        #      range regardless of what was previously stored in its EEPROM.
-        #      (EEPROM can only be written while torque is disabled.)
-        #   3. Write current position as goal so the motor holds still on enable
+        #   2. Write current position as goal so the motor holds still on enable
         #      instead of snapping to a stale goal register.
+        #
+        # NOTE: We intentionally do NOT write EEPROM position limits here.
+        # Writing tight limits when the motor's physical position may be outside
+        # them (e.g. after a crash or manual movement) immediately triggers a
+        # position-limit hardware error the moment torque enables.  Software
+        # clamping in _on_joint_goals is sufficient for normal operation.
         for dxl_id in self.ids:
             hw_err, result, _ = self.packet_handler.read1ByteTxRx(
                 self.port_handler, dxl_id, self.ADDR_HARDWARE_ERROR_STATUS
@@ -177,15 +176,6 @@ class MakiDxl6(Node):
                 )
                 self.packet_handler.reboot(self.port_handler, dxl_id)
                 time.sleep(1.0)  # wait for motor to come back online after reboot
-
-            self.packet_handler.write4ByteTxRx(
-                self.port_handler, dxl_id,
-                self.ADDR_MAX_POSITION_LIMIT, self.max_ticks[dxl_id]
-            )
-            self.packet_handler.write4ByteTxRx(
-                self.port_handler, dxl_id,
-                self.ADDR_MIN_POSITION_LIMIT, self.min_ticks[dxl_id]
-            )
 
             present, result, _ = self.packet_handler.read4ByteTxRx(
                 self.port_handler, dxl_id, self.ADDR_PRESENT_POSITION
@@ -300,71 +290,6 @@ class MakiDxl6(Node):
         return _DEFAULT_ROBOT_LIMITS, _DEFAULT_NEUTRAL_POSITIONS
 
     # ----------------------------------------
-    # MOTOR AUTO-RECOVERY
-    # ----------------------------------------
-    _MAX_RECOVERY_ATTEMPTS = 5
-
-    def _start_recovery(self, dxl_id: int):
-        """Reboot a motor and mark it as recovering; _smooth_update will re-enable after 1.5 s."""
-        prev = self._recovering.get(dxl_id, {})
-        attempts = prev.get('attempts', 0) + 1
-        if attempts > self._MAX_RECOVERY_ATTEMPTS:
-            self.get_logger().error(
-                f"ID {dxl_id}: giving up after {self._MAX_RECOVERY_ATTEMPTS} recovery attempts. "
-                f"Check Dynamixel power supply voltage."
-            )
-            self._recovering.pop(dxl_id, None)
-            return
-        self.get_logger().warn(
-            f"ID {dxl_id} hardware error — rebooting (attempt {attempts}/{self._MAX_RECOVERY_ATTEMPTS})."
-        )
-        try:
-            self.packet_handler.reboot(self.port_handler, dxl_id)
-        except Exception as e:
-            self.get_logger().warn(f"Reboot packet failed for ID {dxl_id}: {e}")
-        self._recovering[dxl_id] = {'reboot_at': time.monotonic(), 'attempts': attempts}
-
-    def _finish_recovery(self, dxl_id: int, idx: int):
-        """Write limits + actual present position as goal + re-enable torque after the reboot wait."""
-        self.packet_handler.write4ByteTxRx(
-            self.port_handler, dxl_id,
-            self.ADDR_MAX_POSITION_LIMIT, self.max_ticks[dxl_id]
-        )
-        self.packet_handler.write4ByteTxRx(
-            self.port_handler, dxl_id,
-            self.ADDR_MIN_POSITION_LIMIT, self.min_ticks[dxl_id]
-        )
-        # Use the motor's ACTUAL present position as goal so re-enabling torque
-        # does not cause a snap-back to wherever the software thinks it should be.
-        present, r, _ = self.packet_handler.read4ByteTxRx(
-            self.port_handler, dxl_id, self.ADDR_PRESENT_POSITION
-        )
-        if r == COMM_SUCCESS:
-            goal_ticks = present
-            rel_deg = (present - self.neutral_ticks[dxl_id]) / TICKS_PER_DEG
-            self.current_positions[idx] = rel_deg   # sync smoothing state to reality
-        else:
-            goal_ticks = self._deg_to_ticks_for_id(dxl_id, self.current_positions[idx])
-        goal_ticks = max(self.min_ticks[dxl_id] + 1, min(self.max_ticks[dxl_id] - 1, goal_ticks))
-        self.packet_handler.write4ByteTxRx(
-            self.port_handler, dxl_id, self.ADDR_GOAL_POSITION, goal_ticks
-        )
-        result, error = self.packet_handler.write1ByteTxRx(
-            self.port_handler, dxl_id,
-            self.ADDR_TORQUE_ENABLE, self.TORQUE_ENABLE
-        )
-        if result == COMM_SUCCESS and error == 0:
-            self.get_logger().info(f"ID {dxl_id} recovered — torque re-enabled.")
-            self._recovering.pop(dxl_id, None)
-        else:
-            # Torque enable failed — the motor still has a latched error.
-            # Kick off another reboot cycle (with attempt counter incremented).
-            self.get_logger().warn(
-                f"ID {dxl_id} torque enable failed after reboot — retrying."
-            )
-            self._start_recovery(dxl_id)
-
-    # ----------------------------------------
     # DEGREES → TICKS CONVERSION
     # ----------------------------------------
     def _deg_to_ticks_for_id(self, dxl_id: int, angle_rel_deg: float) -> int:
@@ -404,16 +329,7 @@ class MakiDxl6(Node):
     # ----------------------------------------
     def _smooth_update(self):
         """Smoothly interpolate toward target positions and send to servos."""
-        now = time.monotonic()
-
         for idx, dxl_id in enumerate(self.ids):
-            # ---- Auto-recovery: skip motor while it reboots, then re-enable ----
-            if dxl_id in self._recovering:
-                if now - self._recovering[dxl_id]['reboot_at'] < 1.5:
-                    continue  # still waiting for motor to come back online
-                self._finish_recovery(dxl_id, idx)
-                continue
-
             delta = self.target_positions[idx] - self.current_positions[idx]
             # Snap when very close to target — stops the servo from hunting at
             # steady state (endless micro-corrections cause visible wobble)
@@ -450,15 +366,10 @@ class MakiDxl6(Node):
                     throttle_duration_sec=2.0
                 )
             elif error != 0:
-                # Motor reported a hardware error — its torque is now disabled.
-                # Trigger non-blocking reboot + re-enable so it recovers automatically.
-                self._start_recovery(dxl_id)
-                # Suppress the normal per-tick warning (recovery log is sufficient)
-                # but keep a throttled one in case recovery keeps failing.
                 self.get_logger().warn(
                     f"Dynamixel error on ID {dxl_id}: "
-                    f"{self.packet_handler.getRxPacketError(error)} — recovering",
-                    throttle_duration_sec=5.0
+                    f"{self.packet_handler.getRxPacketError(error)}",
+                    throttle_duration_sec=2.0
                 )
 
     # ----------------------------------------
