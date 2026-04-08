@@ -232,6 +232,13 @@ class MakiDxl6(Node):
         # ----------------------------------------
         # ROS SUBSCRIBER & SMOOTH UPDATE TIMER
         # ----------------------------------------
+        # Reset the startup gate here — AFTER the motor init loop completes.
+        # The init loop takes ~6 s (one reboot per motor), so the gate set at the
+        # top of __init__ would already be expired by the time the subscriber is
+        # live.  Resetting it now means queued expression commands (published while
+        # the motors were still booting) are held off for a real 3 s.
+        self._startup_time = time.monotonic()
+
         self.sub = self.create_subscription(
             Float64MultiArray,
             '/maki/joint_goals',
