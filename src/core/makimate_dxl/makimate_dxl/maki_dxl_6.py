@@ -121,9 +121,14 @@ class MakiDxl6(Node):
         # ----------------------------------------
         self.current_positions = [0.0] * len(self.ids)
         self.target_positions = [0.0] * len(self.ids)
-        # Motors that are mid-recovery: dxl_id → time.monotonic() when reboot was sent.
-        # The update loop skips these until 1 s has elapsed, then re-enables torque.
+        # Per-motor recovery state: dxl_id → {'reboot_at': float, 'attempts': int}
         self._recovering: dict = {}
+        # Ignore incoming joint goals for this many seconds after startup.
+        # The expressions node publishes immediately on boot; if maki_dxl_6 is still
+        # initialising (rebooting motors), the queued goals arrive the instant the
+        # subscriber is active and cause a simultaneous 6-motor current spike → all
+        # motors get Input Voltage / Electrical Shock errors at once.
+        self._startup_time = time.monotonic()
 
         # ----------------------------------------
         # DYNAMIXEL SDK SETUP
@@ -297,19 +302,30 @@ class MakiDxl6(Node):
     # ----------------------------------------
     # MOTOR AUTO-RECOVERY
     # ----------------------------------------
+    _MAX_RECOVERY_ATTEMPTS = 5
+
     def _start_recovery(self, dxl_id: int):
-        """Reboot a motor and mark it as recovering; _smooth_update will re-enable after 1 s."""
+        """Reboot a motor and mark it as recovering; _smooth_update will re-enable after 1.5 s."""
+        prev = self._recovering.get(dxl_id, {})
+        attempts = prev.get('attempts', 0) + 1
+        if attempts > self._MAX_RECOVERY_ATTEMPTS:
+            self.get_logger().error(
+                f"ID {dxl_id}: giving up after {self._MAX_RECOVERY_ATTEMPTS} recovery attempts. "
+                f"Check Dynamixel power supply voltage."
+            )
+            self._recovering.pop(dxl_id, None)
+            return
         self.get_logger().warn(
-            f"ID {dxl_id} hardware error — rebooting for auto-recovery."
+            f"ID {dxl_id} hardware error — rebooting (attempt {attempts}/{self._MAX_RECOVERY_ATTEMPTS})."
         )
         try:
             self.packet_handler.reboot(self.port_handler, dxl_id)
         except Exception as e:
-            self.get_logger().warn(f"Reboot failed for ID {dxl_id}: {e}")
-        self._recovering[dxl_id] = time.monotonic()
+            self.get_logger().warn(f"Reboot packet failed for ID {dxl_id}: {e}")
+        self._recovering[dxl_id] = {'reboot_at': time.monotonic(), 'attempts': attempts}
 
     def _finish_recovery(self, dxl_id: int, idx: int):
-        """Write limits + goal + re-enable torque after the post-reboot wait."""
+        """Write limits + actual present position as goal + re-enable torque after the reboot wait."""
         self.packet_handler.write4ByteTxRx(
             self.port_handler, dxl_id,
             self.ADDR_MAX_POSITION_LIMIT, self.max_ticks[dxl_id]
@@ -318,11 +334,20 @@ class MakiDxl6(Node):
             self.port_handler, dxl_id,
             self.ADDR_MIN_POSITION_LIMIT, self.min_ticks[dxl_id]
         )
-        # Command the motor to hold its current smoothed position.
-        ticks = self._deg_to_ticks_for_id(dxl_id, self.current_positions[idx])
-        ticks = max(self.min_ticks[dxl_id] + 1, min(self.max_ticks[dxl_id] - 1, ticks))
+        # Use the motor's ACTUAL present position as goal so re-enabling torque
+        # does not cause a snap-back to wherever the software thinks it should be.
+        present, r, _ = self.packet_handler.read4ByteTxRx(
+            self.port_handler, dxl_id, self.ADDR_PRESENT_POSITION
+        )
+        if r == COMM_SUCCESS:
+            goal_ticks = present
+            rel_deg = (present - self.neutral_ticks[dxl_id]) / TICKS_PER_DEG
+            self.current_positions[idx] = rel_deg   # sync smoothing state to reality
+        else:
+            goal_ticks = self._deg_to_ticks_for_id(dxl_id, self.current_positions[idx])
+        goal_ticks = max(self.min_ticks[dxl_id] + 1, min(self.max_ticks[dxl_id] - 1, goal_ticks))
         self.packet_handler.write4ByteTxRx(
-            self.port_handler, dxl_id, self.ADDR_GOAL_POSITION, ticks
+            self.port_handler, dxl_id, self.ADDR_GOAL_POSITION, goal_ticks
         )
         result, error = self.packet_handler.write1ByteTxRx(
             self.port_handler, dxl_id,
@@ -330,12 +355,14 @@ class MakiDxl6(Node):
         )
         if result == COMM_SUCCESS and error == 0:
             self.get_logger().info(f"ID {dxl_id} recovered — torque re-enabled.")
+            self._recovering.pop(dxl_id, None)
         else:
+            # Torque enable failed — the motor still has a latched error.
+            # Kick off another reboot cycle (with attempt counter incremented).
             self.get_logger().warn(
-                f"ID {dxl_id} recovery torque enable failed — will retry next cycle."
+                f"ID {dxl_id} torque enable failed after reboot — retrying."
             )
-            # Keep in _recovering so it's retried next tick.
-            self._recovering[dxl_id] = time.monotonic()
+            self._start_recovery(dxl_id)
 
     # ----------------------------------------
     # DEGREES → TICKS CONVERSION
@@ -348,6 +375,14 @@ class MakiDxl6(Node):
     # ON JOINT GOALS (just updates targets)
     # ----------------------------------------
     def _on_joint_goals(self, msg: Float64MultiArray):
+        # Discard commands that arrive in the first 3 s after startup.
+        # The expressions node queues commands before the motors are ready;
+        # executing a large multi-motor movement immediately causes a current
+        # spike that triggers Input Voltage / Electrical Shock errors on all
+        # motors at once.
+        if time.monotonic() - self._startup_time < 3.0:
+            return
+
         values = list(msg.data)
         if len(values) != len(self.ids):
             self.get_logger().warning(
@@ -374,9 +409,8 @@ class MakiDxl6(Node):
         for idx, dxl_id in enumerate(self.ids):
             # ---- Auto-recovery: skip motor while it reboots, then re-enable ----
             if dxl_id in self._recovering:
-                if now - self._recovering[dxl_id] < 1.0:
-                    continue  # still waiting for motor to come back
-                del self._recovering[dxl_id]
+                if now - self._recovering[dxl_id]['reboot_at'] < 1.5:
+                    continue  # still waiting for motor to come back online
                 self._finish_recovery(dxl_id, idx)
                 continue
 
