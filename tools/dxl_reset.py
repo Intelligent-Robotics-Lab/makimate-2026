@@ -31,6 +31,8 @@ PROTOCOL = 2.0
 IDS      = [1, 2, 3, 4, 5, 6]
 
 ADDR_OPERATING_MODE        = 11   # 1 byte, EEPROM — write with torque OFF
+ADDR_MAX_POSITION_LIMIT    = 48   # 4 bytes, EEPROM — write with torque OFF
+ADDR_MIN_POSITION_LIMIT    = 52   # 4 bytes, EEPROM — write with torque OFF
 ADDR_TORQUE_ENABLE         = 64   # 1 byte
 ADDR_GOAL_POSITION         = 116  # 4 bytes
 ADDR_PRESENT_POSITION      = 132  # 4 bytes
@@ -118,6 +120,18 @@ def main():
 
     print("Waiting 2 s for motors to come back online...")
     time.sleep(2.0)
+    print()
+
+    # ── Step 3b: Clear EEPROM position limits → full 0–4095 range ─────────────
+    # Previous wrong calibration may have written tight limits (e.g. max=570 for
+    # ID 1) into EEPROM.  These survive reboots and cause "data value exceeds
+    # limit" errors when we write a goal outside that stale range.
+    # Torque is off after reboot — safe to write EEPROM now.
+    print("Clearing EEPROM position limits to full range (0–4095)...")
+    for dxl_id in IDS:
+        packet.write4ByteTxRx(port, dxl_id, ADDR_MAX_POSITION_LIMIT, 4095)
+        packet.write4ByteTxRx(port, dxl_id, ADDR_MIN_POSITION_LIMIT, 0)
+        print(f"  ID {dxl_id}: position limits cleared")
     print()
 
     # ── Step 4: Set goal = present (or neutral if position is garbage) ─────────
