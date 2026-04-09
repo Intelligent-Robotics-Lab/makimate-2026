@@ -4,7 +4,7 @@ from launch.actions import ExecuteProcess
 
 def generate_launch_description():
     shell_prefix = (
-        "export LIBCAMERA_IPA_MODULE_PATH=/usr/lib/aarch64-linux-gnu/libcamera && "
+        "export LD_LIBRARY_PATH=/home/makimate/libcamera/build/subprojects/libpisp/src:/usr/local/lib/aarch64-linux-gnu:${LD_LIBRARY_PATH:-} && "
         "source /opt/ros/jazzy/setup.bash && "
         "source ~/makimate-2026/install/setup.bash && "
         "{ [ -f ~/maki_ws/install/setup.bash ] && source ~/maki_ws/install/setup.bash; true; } && "
