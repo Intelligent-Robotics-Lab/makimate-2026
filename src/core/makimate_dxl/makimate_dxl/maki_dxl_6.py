@@ -27,29 +27,29 @@ TICKS_PER_DEG = TICKS_PER_REV / DEG_PER_REV  # ~11.38 ticks/deg
 # Run tools/calibrate_motors.py to generate config/motor_limits.yaml
 # for your specific robot.
 #
-# ID mapping (confirmed from original working codebase):
+# ID mapping (confirmed by physical testing with dxl_nudge.py):
 #   1 = neck_yaw
 #   2 = neck_pitch
-#   3 = eye_pitch
-#   4 = eye_yaw
+#   3 = broken (eyelid/eyeball mechanical conflict)
+#   4 = broken (no visible movement)
 #   5 = lid_left
 #   6 = lid_right
 # ----------------------------------------------------
 _DEFAULT_ROBOT_LIMITS = {
-    1: {"min": 2640, "max": 3641},  # neck_yaw
-    2: {"min": 1855, "max": 2324},  # neck_pitch
-    3: {"min": 2352, "max": 2635},  # eye_pitch
-    4: {"min": 1679, "max": 2495},  # eye_yaw
-    5: {"min": 2378, "max": 3057},  # lid_left
-    6: {"min": 1021, "max": 1699},  # lid_right
+    1: {"min": 1500, "max": 3000},  # neck_yaw
+    2: {"min": 1600, "max": 2400},  # neck_pitch
+    3: {"min":  800, "max": 2200},  # broken — parked
+    4: {"min":  800, "max": 2200},  # broken — parked
+    5: {"min":  490, "max":  933},  # lid_left
+    6: {"min":  122, "max":  549},  # lid_right
 }
 _DEFAULT_NEUTRAL_POSITIONS = {
-    1: 3140,  # neck_yaw
-    2: 2090,  # neck_pitch
-    3: 2493,  # eye_pitch
-    4: 2087,  # eye_yaw
-    5: 2717,  # lid_left
-    6: 1360,  # lid_right
+    1: 2145,  # neck_yaw   — centered
+    2: 2032,  # neck_pitch — upright
+    3: 1500,  # broken     — parked
+    4: 1500,  # broken     — parked
+    5:  711,  # lid_left   — half open
+    6:  335,  # lid_right  — half open
 }
 
 # Default config file location — resolve symlinks first so colcon --symlink-install works.
@@ -92,18 +92,14 @@ class MakiDxl6(Node):
         self.min_rel_deg = {
             1: -20.0,  # neck_yaw   (ID 1)
             2: -18.0,  # neck_pitch (ID 2)
-            3: -12.0,  # eye_pitch  (ID 3)
-            4: -32.0,  # eye_yaw    (ID 4)
-            5: -19.0,  # lid_left   (ID 5)
-            6: -26.0,  # lid_right  (ID 6)
+            5: -19.0,  # lid_left   (ID 5) — closed
+            6: -19.0,  # lid_right  (ID 6) — open
         }
         self.max_rel_deg = {
             1: 20.0,   # neck_yaw   (ID 1)
             2: 18.0,   # neck_pitch (ID 2)
-            3: 10.0,   # eye_pitch  (ID 3)
-            4: 32.0,   # eye_yaw    (ID 4)
-            5: 26.0,   # lid_left   (ID 5)
-            6: 26.0,   # lid_right  (ID 6)
+            5: 19.0,   # lid_left   (ID 5) — open
+            6: 19.0,   # lid_right  (ID 6) — closed
         }
 
         # Read basic params
@@ -115,8 +111,11 @@ class MakiDxl6(Node):
 
         # Per-motor alpha: eyes snap instantly (1.0), lids are quick (0.5),
         # neck uses the tunable smoothing_alpha parameter.
-        _EYE_IDS = {3, 4}   # eye_pitch (ID 3), eye_yaw (ID 4)
-        _LID_IDS = {5, 6}   # lid_left, lid_right
+        # IDs that are physically broken — skip entirely (no init, no commands)
+        self._skip_ids = {3, 4}
+
+        _EYE_IDS = set()        # no working eye motors on this robot
+        _LID_IDS = {5, 6}   # lid_left (ID 5), lid_right (ID 6)
         self._smoothing_alphas = [
             1.0 if mid in _EYE_IDS else
             0.5 if mid in _LID_IDS else
@@ -175,6 +174,9 @@ class MakiDxl6(Node):
         # position-limit hardware error the moment torque enables.  Software
         # clamping in _on_joint_goals is sufficient for normal operation.
         for dxl_id in self.ids:
+            if dxl_id in self._skip_ids:
+                continue
+
             hw_err, result, _ = self.packet_handler.read1ByteTxRx(
                 self.port_handler, dxl_id, self.ADDR_HARDWARE_ERROR_STATUS
             )
@@ -225,6 +227,9 @@ class MakiDxl6(Node):
         # so the first update doesn't snap to neutral.
         # ----------------------------------------
         for idx, dxl_id in enumerate(self.ids):
+            if dxl_id in self._skip_ids:
+                continue
+
             ticks, result, _ = self.packet_handler.read4ByteTxRx(
                 self.port_handler, dxl_id, self.ADDR_PRESENT_POSITION
             )
@@ -269,7 +274,7 @@ class MakiDxl6(Node):
             if p.name == 'smoothing_alpha':
                 self.smoothing_alpha = float(p.value)
                 # Rebuild per-motor alphas (eyes/lids stay at their fixed values)
-                _EYE_IDS = {3, 4}
+                _EYE_IDS = set()
                 _LID_IDS = {5, 6}
                 self._smoothing_alphas = [
                     1.0 if mid in _EYE_IDS else
@@ -345,6 +350,9 @@ class MakiDxl6(Node):
     def _smooth_update(self):
         """Smoothly interpolate toward target positions and send to servos."""
         for idx, dxl_id in enumerate(self.ids):
+            if dxl_id in self._skip_ids:
+                continue
+
             delta = self.target_positions[idx] - self.current_positions[idx]
             # Snap when very close to target — stops the servo from hunting at
             # steady state (endless micro-corrections cause visible wobble)
@@ -393,6 +401,8 @@ class MakiDxl6(Node):
     def destroy_node(self):
         self.get_logger().info("Disabling torque + closing port...")
         for dxl_id in self.ids:
+            if dxl_id in self._skip_ids:
+                continue
             try:
                 self.packet_handler.write1ByteTxRx(
                     self.port_handler, dxl_id,
