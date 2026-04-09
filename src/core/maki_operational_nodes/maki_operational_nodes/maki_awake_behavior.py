@@ -1,5 +1,6 @@
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, DurabilityPolicy
 from std_msgs.msg import Bool, String
 
 
@@ -30,12 +31,14 @@ class MakiAwakeBehavior(Node):
         )
 
         # Pub/sub
+        _latched_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
+
         self._expr_pub = self.create_publisher(String, expression_topic, 10)
         self._awake_sub = self.create_subscription(
             Bool,
             awake_topic,
             self._on_awake,
-            10,
+            _latched_qos,
         )
 
         # Track awake state
