@@ -38,8 +38,8 @@ ADDR_HARDWARE_ERROR_STATUS = 70   # 1 byte (read-only)
 
 OPERATING_MODE_POSITION = 3   # Normal 0–4095 single-turn position control
 
-JOINT_NAMES = {1: "eye_pitch", 2: "neck_pitch", 3: "neck_yaw",
-               4: "eye_yaw",   5: "lid_left",   6: "lid_right"}
+JOINT_NAMES = {1: "neck_yaw",  2: "neck_pitch", 3: "eye_pitch",
+               4: "eye_yaw",  5: "lid_left",   6: "lid_right"}
 
 # Load calibrated neutral positions from motor_limits.yaml if available
 _REPO_ROOT = Path(__file__).resolve().parents[1]

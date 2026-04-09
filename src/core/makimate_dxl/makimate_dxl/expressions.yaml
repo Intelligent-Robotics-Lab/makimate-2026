@@ -1,7 +1,7 @@
-# Joint order (physical motor mapping, confirmed by testing):
-#   [0] ID1 = eye_pitch   (+ = down, - = up)
+# Joint order (physical motor mapping):
+#   [0] ID1 = neck_yaw    (+ = right, - = left)
 #   [1] ID2 = neck_pitch  (+ = forward/down, - = back/up)
-#   [2] ID3 = neck_yaw    (+ = left, - = right)  ← must be 0 unless intentionally turning
+#   [2] ID3 = eye_pitch   (+ = down, - = up)
 #   [3] ID4 = eye_yaw     (+ = right, - = left)
 #   [4] ID5 = lid_left    (+ = open, - = closed)
 #   [5] ID6 = lid_right   (- = open, + = closed)
@@ -10,29 +10,29 @@ neutral:
   joints: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 
 listening:
-  # attentive: neck slightly back, eyes open, looking straight
-  joints: [0.0, -5.0, 0.0, 0.0, 20.0, -20.0]
+  # slight head tilt back, eyes open, looking straight
+  joints: [-10.0, -5.0, 0.0, 0.0, 20.0, -20.0]
 
 curious_left:
-  # head turns left, eyes look left
-  joints: [0.0, -3.0, 10.0, -12.0, 14.0, -16.0]
+  # head & eyes turn left
+  joints: [-20.0, -5.0, 2.0, -20.0, 3.0, -18.0]
 
 curious_right:
-  # head turns right, eyes look right
-  joints: [0.0, -3.0, -10.0, 12.0, 14.0, -16.0]
+  # head & eyes turn right
+  joints: [20.0, -5.0, 2.0, 20.0, 18.0, -3.0]
 
 happy:
-  # neck slightly forward, lids squinted (smiley)
-  joints: [0.0, 5.0, 0.0, 0.0, 15.0, -18.0]
+  # neck slightly forward, eyes up, lids squinted (smiley)
+  joints: [0.0, 5.0, 6.0, 0.0, 17.0, -20.0]
 
 sad:
-  # head drooped forward, lids half-closed
-  joints: [0.0, 10.0, 0.0, 0.0, -5.0, 10.0]
+  # head drooped forward, eyes down, lids half-closed
+  joints: [0.0, 10.0, -8.0, 0.0, -5.0, 10.0]
 
 sleepy:
-  # head pitched way forward, lids almost closed, neck straight
-  joints: [0.0, 18.0, 0.0, 0.0, -19.0, 26.0]
+  # head pitched forward, lids almost closed
+  joints: [0.0, 18.0, 10.0, 0.0, -19.0, 26.0]
 
 wide_awake:
-  # head slightly back, eyes wide open, neck straight
-  joints: [0.0, -8.0, 0.0, 0.0, 20.0, -18.0]
+  # head slightly back, eyes up, lids wide open
+  joints: [0.0, -8.0, 8.0, 0.0, 20.0, -18.0]

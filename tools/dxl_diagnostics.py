@@ -37,9 +37,9 @@ ADDR_PRESENT_INPUT_VOLTAGE = 144  # 2 bytes, units: 0.1 V
 ADDR_PRESENT_POSITION      = 132  # 4 bytes
 
 JOINT_NAMES = {
-    1: "eye_pitch",
+    1: "neck_yaw",
     2: "neck_pitch",
-    3: "neck_yaw",
+    3: "eye_pitch",
     4: "eye_yaw",
     5: "lid_left",
     6: "lid_right",

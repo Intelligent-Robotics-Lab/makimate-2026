@@ -57,18 +57,18 @@ TORQUE_ENABLE       = 1
 TORQUE_DISABLE      = 0
 
 MOTOR_NAMES = {
-    1: "eye_pitch",
+    1: "neck_yaw",
     2: "neck_pitch",
-    3: "neck_yaw",
+    3: "eye_pitch",
     4: "eye_yaw",
     5: "lid_left",
     6: "lid_right",
 }
 
 # Default values shown when no prior YAML exists
-_FALLBACK_MIN  = {1: 28,   2: 1748, 3: 532,  4: 1809, 5: 2432, 6: 1097}
-_FALLBACK_MAX  = {1: 570,  2: 2348, 3: 1467, 4: 2241, 5: 3121, 6: 1786}
-_FALLBACK_NEU  = {1: 460,  2: 2077, 3: 1000, 4: 2028, 5: 3007, 6: 1209}
+_FALLBACK_MIN  = {1: 2640, 2: 1855, 3: 2352, 4: 1679, 5: 2378, 6: 1021}
+_FALLBACK_MAX  = {1: 3641, 2: 2324, 3: 2635, 4: 2495, 5: 3057, 6: 1699}
+_FALLBACK_NEU  = {1: 3140, 2: 2090, 3: 2493, 4: 2087, 5: 2717, 6: 1360}
 
 REPO_ROOT    = Path(__file__).parent.parent
 DEFAULT_OUT  = REPO_ROOT / "config" / "motor_limits.yaml"

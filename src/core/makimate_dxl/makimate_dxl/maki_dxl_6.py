@@ -26,22 +26,30 @@ TICKS_PER_DEG = TICKS_PER_REV / DEG_PER_REV  # ~11.38 ticks/deg
 # FALLBACK LIMITS — used only when no YAML config is found.
 # Run tools/calibrate_motors.py to generate config/motor_limits.yaml
 # for your specific robot.
+#
+# ID mapping (confirmed from original working codebase):
+#   1 = neck_yaw
+#   2 = neck_pitch
+#   3 = eye_pitch
+#   4 = eye_yaw
+#   5 = lid_left
+#   6 = lid_right
 # ----------------------------------------------------
 _DEFAULT_ROBOT_LIMITS = {
-    1: {"min": 28, "max": 570},
-    2: {"min": 1748, "max": 2348},
-    3: {"min": 532, "max": 1467},
-    4: {"min": 1809, "max": 2241},
-    5: {"min": 2432, "max": 3121},
-    6: {"min": 1097, "max": 1786},
+    1: {"min": 2640, "max": 3641},  # neck_yaw
+    2: {"min": 1855, "max": 2324},  # neck_pitch
+    3: {"min": 2352, "max": 2635},  # eye_pitch
+    4: {"min": 1679, "max": 2495},  # eye_yaw
+    5: {"min": 2378, "max": 3057},  # lid_left
+    6: {"min": 1021, "max": 1699},  # lid_right
 }
 _DEFAULT_NEUTRAL_POSITIONS = {
-    1: 460,   # eye_pitch
-    2: 2077,  # neck_pitch
-    3: 1000,  # neck_yaw
-    4: 2028,  # eye_yaw
-    5: 3007,  # lid_left
-    6: 1209,  # lid_right
+    1: 3140,  # neck_yaw
+    2: 2090,  # neck_pitch
+    3: 2493,  # eye_pitch
+    4: 2087,  # eye_yaw
+    5: 2717,  # lid_left
+    6: 1360,  # lid_right
 }
 
 # Default config file location — resolve symlinks first so colcon --symlink-install works.
@@ -82,18 +90,18 @@ class MakiDxl6(Node):
         # SOFTWARE RELATIVE ANGLE LIMITS (DEG)
         # ----------------------------------------
         self.min_rel_deg = {
-            1: -12.0,  # eye_pitch  (ID 1)
+            1: -20.0,  # neck_yaw   (ID 1)
             2: -18.0,  # neck_pitch (ID 2)
-            3: -20.0,  # neck_yaw   (ID 3, hardware ±41°, using ±20° safely)
-            4: -15.0,  # eye_yaw    (ID 4)
+            3: -12.0,  # eye_pitch  (ID 3)
+            4: -32.0,  # eye_yaw    (ID 4)
             5: -19.0,  # lid_left   (ID 5)
             6: -26.0,  # lid_right  (ID 6)
         }
         self.max_rel_deg = {
-            1: 12.0,   # eye_pitch  (ID 1)
+            1: 20.0,   # neck_yaw   (ID 1)
             2: 18.0,   # neck_pitch (ID 2)
-            3: 20.0,   # neck_yaw   (ID 3)
-            4: 15.0,   # eye_yaw    (ID 4)
+            3: 10.0,   # eye_pitch  (ID 3)
+            4: 32.0,   # eye_yaw    (ID 4)
             5: 26.0,   # lid_left   (ID 5)
             6: 26.0,   # lid_right  (ID 6)
         }
@@ -107,7 +115,7 @@ class MakiDxl6(Node):
 
         # Per-motor alpha: eyes snap instantly (1.0), lids are quick (0.5),
         # neck uses the tunable smoothing_alpha parameter.
-        _EYE_IDS = {1, 4}   # eye_pitch, eye_yaw
+        _EYE_IDS = {3, 4}   # eye_pitch (ID 3), eye_yaw (ID 4)
         _LID_IDS = {5, 6}   # lid_left, lid_right
         self._smoothing_alphas = [
             1.0 if mid in _EYE_IDS else
@@ -261,7 +269,7 @@ class MakiDxl6(Node):
             if p.name == 'smoothing_alpha':
                 self.smoothing_alpha = float(p.value)
                 # Rebuild per-motor alphas (eyes/lids stay at their fixed values)
-                _EYE_IDS = {1, 4}
+                _EYE_IDS = {3, 4}
                 _LID_IDS = {5, 6}
                 self._smoothing_alphas = [
                     1.0 if mid in _EYE_IDS else
