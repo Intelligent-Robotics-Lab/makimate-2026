@@ -401,6 +401,7 @@ def robot_start(node: "DashboardNode") -> tuple:
         try:
             repo = str(_get_repo_root())
             cmd = (
+                "export LIBCAMERA_IPA_MODULE_PATH=/usr/lib/aarch64-linux-gnu/libcamera && "
                 "source /opt/ros/jazzy/setup.bash && "
                 f"source {repo}/install/setup.bash && "
                 "if [ -f ~/maki_ws/install/setup.bash ]; then source ~/maki_ws/install/setup.bash; fi && "
