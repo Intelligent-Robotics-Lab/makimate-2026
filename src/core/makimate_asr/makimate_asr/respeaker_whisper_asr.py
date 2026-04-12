@@ -22,6 +22,7 @@ from typing import Optional
 import numpy as np
 import rclpy
 from rclpy.node import Node
+from rcl_interfaces.msg import SetParametersResult
 from std_msgs.msg import String, Bool
 import sounddevice as sd
 import webrtcvad
@@ -210,10 +211,39 @@ class ReSpeakerWhisperASR(Node):
             f"VAD aggressiveness={vad_aggressiveness}, silence_ms={silence_ms}"
         )
 
+        # ---- Live parameter updates ----
+        self.add_on_set_parameters_callback(self._on_params)
+
         # ---- Inference thread ----
         self._inf_thread = threading.Thread(target=self._inference_loop, daemon=True)
         self._inf_thread.start()
         self.get_logger().info("ReSpeakerWhisperASR node started.")
+
+    # ------------------------------------------------------------------ #
+    # Live parameter updates
+    # ------------------------------------------------------------------ #
+    def _on_params(self, params):
+        for p in params:
+            if p.name == 'rms_threshold':
+                self._rms_threshold = float(p.value)
+                self.get_logger().info(f'[live] rms_threshold = {self._rms_threshold}')
+            elif p.name == 'no_speech_threshold':
+                self.no_speech_thr = float(p.value)
+                self.get_logger().info(f'[live] no_speech_threshold = {self.no_speech_thr}')
+            elif p.name in ('vad_aggressiveness', 'silence_ms'):
+                # Rebuild chunker with new settings
+                agg = int(self.get_parameter('vad_aggressiveness').value)
+                sil = int(self.get_parameter('silence_ms').value)
+                if p.name == 'vad_aggressiveness':
+                    agg = int(p.value)
+                else:
+                    sil = int(p.value)
+                with self._lock:
+                    self.chunker = VadChunker(aggressiveness=agg, silence_ms=sil)
+                self.get_logger().info(
+                    f'[live] VAD chunker rebuilt — aggressiveness={agg}, silence_ms={sil}'
+                )
+        return SetParametersResult(successful=True)
 
     # ------------------------------------------------------------------ #
     # Audio callback (runs in sounddevice thread — must be fast)
@@ -315,11 +345,10 @@ class ReSpeakerWhisperASR(Node):
         segments, info = self.model.transcribe(
             audio,
             language='en',
-            beam_size=5,
+            beam_size=1,          # greedy — ~3x faster, fine for short commands
             temperature=0,
             condition_on_previous_text=False,
-            vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=200),
+            vad_filter=False,     # webrtcvad already gates upstream — skip redundant pass
             no_speech_threshold=self.no_speech_thr,
         )
         parts = [seg.text.strip() for seg in segments]
