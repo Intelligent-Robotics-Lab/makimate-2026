@@ -2,6 +2,7 @@
 
 import rclpy
 from rclpy.node import Node
+from rcl_interfaces.msg import SetParametersResult
 
 from std_msgs.msg import Int32MultiArray, Float64MultiArray, Bool
 
@@ -49,6 +50,12 @@ class FaceToMaki(Node):
         self.declare_parameter("invert_x", False)
         self.declare_parameter("invert_y", False)
 
+        # Camera mounting offset — shifts the target center in normalized [-1, 1] units.
+        # If the robot always looks slightly RIGHT, set camera_offset_x = +0.1
+        # (tells the tracker the camera optical axis is 10% to the right of image center)
+        self.declare_parameter("camera_offset_x", 0.0)
+        self.declare_parameter("camera_offset_y", 0.0)
+
         bbox_topic = self.get_parameter("bbox_topic").value
         out_topic = self.get_parameter("out_topic").value
 
@@ -57,6 +64,10 @@ class FaceToMaki(Node):
 
         self.invert_x = bool(self.get_parameter("invert_x").value)
         self.invert_y = bool(self.get_parameter("invert_y").value)
+        self.camera_offset_x = float(self.get_parameter("camera_offset_x").value)
+        self.camera_offset_y = float(self.get_parameter("camera_offset_y").value)
+
+        self.add_on_set_parameters_callback(self._on_params)
 
         # Publisher to what MakiBehavior already listens to
         self.out_pub = self.create_publisher(Float64MultiArray, out_topic, 10)
@@ -75,6 +86,23 @@ class FaceToMaki(Node):
             f"  Publishing face_pos: {out_topic}\n"
             f"  image_width={self.image_width}, image_height={self.image_height}"
         )
+
+    # -------------------------
+    # Live parameter updates
+    # -------------------------
+    def _on_params(self, params):
+        for p in params:
+            if p.name == "camera_offset_x":
+                self.camera_offset_x = float(p.value)
+                self.get_logger().info(f"[live] camera_offset_x = {self.camera_offset_x}")
+            elif p.name == "camera_offset_y":
+                self.camera_offset_y = float(p.value)
+                self.get_logger().info(f"[live] camera_offset_y = {self.camera_offset_y}")
+            elif p.name == "invert_x":
+                self.invert_x = bool(p.value)
+            elif p.name == "invert_y":
+                self.invert_y = bool(p.value)
+        return SetParametersResult(successful=True)
 
     # -------------------------
     # Awake callback
@@ -99,8 +127,6 @@ class FaceToMaki(Node):
 
         # Face not found: your tracker uses [-1, -1, -1, -1]
         if x < 0 or y < 0 or w <= 0 or h <= 0:
-            # Option 1: do nothing => Maki holds last pose
-            # Option 2: you could slowly move back to neutral here
             return
 
         if self.image_width <= 0 or self.image_height <= 0:
@@ -122,6 +148,11 @@ class FaceToMaki(Node):
         if self.invert_y:
             y_off = -y_off
 
+        # Apply camera mounting offset so tracking targets the robot's optical axis,
+        # not the raw image center.
+        x_off -= self.camera_offset_x
+        y_off -= self.camera_offset_y
+
         # clamp to [-1, 1] just in case
         x_off = max(-1.0, min(1.0, x_off))
         y_off = max(-1.0, min(1.0, y_off))
@@ -129,11 +160,6 @@ class FaceToMaki(Node):
         out = Float64MultiArray()
         out.data = [x_off, y_off]
         self.out_pub.publish(out)
-
-        # Optional debug:
-        # self.get_logger().info(
-        #     f"bbox=({x},{y},{w},{h}) -> offsets=({x_off:.2f}, {y_off:.2f})"
-        # )
 
 
 def main(args=None):

@@ -42,6 +42,7 @@ SERVER_CONFIG: Dict = {
 PARAM_REGISTRY = {
     "maki_dxl_6": ["smoothing_alpha", "update_rate"],
     "maki_behavior": ["no_face_threshold", "track_gain_yaw", "track_gain_pitch"],
+    "face_to_maki": ["camera_offset_x", "camera_offset_y"],
     "speaker_recognition_node": ["threshold"],
     "face_tracker": ["recognition_threshold", "recognition_interval", "weight_centerness", "weight_size", "weight_lifetime", "weight_lips"],
     "respeaker_dsp": ["vad_threshold"],

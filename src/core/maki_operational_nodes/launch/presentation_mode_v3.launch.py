@@ -268,9 +268,7 @@ def generate_launch_description():
             "bash",
             "-lc",
             shell_prefix
-            + "ros2 run makimate_vision face_to_maki "
-              "--ros-args "
-              "-p invert_x:=true"
+            + "ros2 run makimate_vision face_to_maki"
         ],
         output="screen",
     )
