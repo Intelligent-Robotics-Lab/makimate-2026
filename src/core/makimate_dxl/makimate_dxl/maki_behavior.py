@@ -584,9 +584,9 @@ class MakiBehavior(Node):
         K_YAW   = self.track_gain_yaw
         K_PITCH = self.track_gain_pitch
 
-        # x>0 → face right of center → Maki turns right → neck_yaw negative
-        # Camera is mirrored: right-of-center in image = Maki's left → flip sign
-        self.yaw_cmd += K_YAW * x
+        # x>0 → face is right of center in image → head must turn LEFT to re-centre it
+        # (confirmed by log: +x_off was increasing, meaning += was driving face to edge)
+        self.yaw_cmd -= K_YAW * x
         # y>0 → face above center → look up → neck_pitch negative (back/up)
         self.pitch_cmd += K_PITCH * (-y)
 
