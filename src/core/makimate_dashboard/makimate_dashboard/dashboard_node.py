@@ -45,7 +45,7 @@ PARAM_REGISTRY = {
     "face_to_maki": ["camera_offset_x", "camera_offset_y"],
     "speaker_recognition_node": ["threshold"],
     "face_tracker": ["recognition_threshold", "recognition_interval", "weight_centerness", "weight_size", "weight_lifetime", "weight_lips"],
-    "respeaker_dsp": ["vad_threshold"],
+    "respeaker_dsp": ["vad_threshold", "enable_ns", "enable_echo", "enable_agc", "hpf_cutoff"],
     "respeaker_whisper_asr": ["vad_aggressiveness", "silence_ms", "no_speech_threshold", "rms_threshold"],
     "ai_command_router": ["wake_phrase", "sleep_phrase"],
     "llm_bridge": ["laptop_host"],
@@ -203,7 +203,11 @@ def ros2_param_set(node_name: str, param: str, value: str):
             ["ros2", "param", "set", f"/{node_name}", param, str(value)],
             capture_output=True, text=True, timeout=5,
         )
-        return r.returncode == 0, (r.stdout.strip() or r.stderr.strip())
+        output = r.stdout.strip() or r.stderr.strip()
+        # ROS2 Jazzy may return exit 0 even when the node callback rejects the param
+        if r.returncode != 0 or "failed" in output.lower():
+            return False, output
+        return True, output
     except subprocess.TimeoutExpired:
         return False, "Timeout — node may not be running"
     except Exception as e:

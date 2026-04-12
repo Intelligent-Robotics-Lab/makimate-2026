@@ -29,7 +29,7 @@ def generate_launch_description():
               "-p enable_topic:=/asr/enable "
               "-p no_speech_threshold:=0.6 "
               "-p vad_aggressiveness:=2 "
-              "-p silence_ms:=400"
+              "-p silence_ms:=200"
         ],
         output="screen",
     )
