@@ -18,7 +18,7 @@ robot_limits:
   6: {min:  122, max:  549}    # lid_right  — confirmed: 122=open,   549=closed
 
 robot_neutral_positions:
-  1: 2145    # neck_yaw   — centered (confirmed)
+  1: 2077    # neck_yaw   — centered (confirmed by dxl_nudge.py)
   2: 2032    # neck_pitch — upright  (confirmed)
   3: 1500    # broken     — parked
   4: 1500    # broken     — parked
