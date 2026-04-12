@@ -161,6 +161,11 @@ class FaceToMaki(Node):
         out.data = [x_off, y_off]
         self.out_pub.publish(out)
 
+        self.get_logger().info(
+            f"bbox=({x},{y},{w},{h}) -> offsets=({x_off:.2f}, {y_off:.2f})",
+            throttle_duration_sec=0.5,
+        )
+
 
 def main(args=None):
     rclpy.init(args=args)
