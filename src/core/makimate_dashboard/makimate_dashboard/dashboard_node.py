@@ -245,7 +245,7 @@ def _pulse_env() -> dict:
     import os
     e = os.environ.copy()
     if 'XDG_RUNTIME_DIR' not in e:
-        e['XDG_RUNTIME_DIR'] = '/run/user/1002'
+        e['XDG_RUNTIME_DIR'] = f'/run/user/{os.getuid()}'
     return e
 
 
