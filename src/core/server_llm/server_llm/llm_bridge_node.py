@@ -1,3 +1,4 @@
+import re
 import sys
 import time  # you can keep this or remove if unused elsewhere
 from typing import Optional
@@ -7,6 +8,15 @@ from rclpy.node import Node
 from std_msgs.msg import String, Bool
 
 import requests
+
+_EMOJI_RE = re.compile(
+    u"[\U0001F300-\U0001F9FF\U00002702-\U000027B0\U000024C2-\U0001F251]+",
+    flags=re.UNICODE,
+)
+
+def _strip_emojis(text: str) -> str:
+    return _EMOJI_RE.sub('', text).strip()
+
 
 SYSTEM_PROMPT = """
 You are a friendly and intelligent AI mentor speaking with engineering students. Respond only in plain text without any markdown, bullet points, or symbols like * _ - # > or emojis. Write your explanations in natural sentences and paragraphs. Focus on clarity, understanding, and conversational tone. Explain engineering and scientific concepts in an intuitive way using real-world analogies. When describing math or physics, focus on intuition and practical understanding before introducing any formulas. Always stay positive, encouraging, and respectful. Keep all your answers short and summarized, at most 5 sentences.
@@ -126,7 +136,7 @@ class LLMBridge(Node):
                 for chunk in resp.iter_content(chunk_size=None):
                     if not chunk:
                         continue
-                    piece = chunk.decode('utf-8', errors='ignore')
+                    piece = _strip_emojis(chunk.decode('utf-8', errors='ignore'))
                     if not piece:
                         continue
 

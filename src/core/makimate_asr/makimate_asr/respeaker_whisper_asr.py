@@ -36,7 +36,7 @@ FRAME_BYTES    = FRAME_SAMPLES * 2            # 640 bytes (int16 = 2 bytes/sampl
 # ---- Noise filter -----------------------------------------------------------
 NOISE_WORDS = {
     'huh', 'h', 'uh', 'um', 'hmm', 'mm', 'ah', 'eh', 'oh',
-    'a', 'the', 'and', 'you', 'thank', 'thanks',
+    'a', 'the', 'and', 'you', 'thank', 'thanks', 'haha', 'hehe', 'ha',
 }
 
 # Known Whisper hallucination phrases (startswith match on lowercased text).
@@ -385,9 +385,9 @@ class ReSpeakerWhisperASR(Node):
         if not text:
             return None
 
-        # Single noise word
+        # Single noise word or pure punctuation (e.g. ".")
         words = text.split()
-        if len(words) == 1 and words[0].lower().strip('.,!?') in NOISE_WORDS:
+        if len(words) == 1 and words[0].lower().strip('.,!?') in NOISE_WORDS | {''}:
             self.get_logger().debug(f"Filtered noise: {text!r}")
             return None
 
