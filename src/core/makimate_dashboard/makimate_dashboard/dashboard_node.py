@@ -266,16 +266,17 @@ def set_volume(value: int) -> tuple:
             return True, 'PulseAudio', value
     except Exception as e:
         pass
-    # fallback: ALSA PCM
-    try:
-        r = subprocess.run(
-            ['amixer', '-q', 'sset', 'PCM', f'{value}%'],
-            capture_output=True, text=True, timeout=3,
-        )
-        if r.returncode == 0:
-            return True, 'ALSA PCM', value
-    except Exception:
-        pass
+    # fallback: ALSA — try Master (USB DAC card 0) then PCM
+    for ctrl in ('Master', 'PCM'):
+        try:
+            r = subprocess.run(
+                ['amixer', '-c', '0', '-q', 'sset', ctrl, f'{value}%'],
+                capture_output=True, text=True, timeout=3,
+            )
+            if r.returncode == 0:
+                return True, f'ALSA {ctrl}', value
+        except Exception:
+            pass
     return False, 'No suitable volume control found', value
 
 
@@ -293,18 +294,19 @@ def get_volume() -> int:
                 return int(m.group(1))
     except Exception:
         pass
-    # fallback: ALSA PCM
-    try:
-        r = subprocess.run(
-            ['amixer', 'sget', 'PCM'],
-            capture_output=True, text=True, timeout=3,
-        )
-        if r.returncode == 0:
-            m = re.search(r'\[(\d+)%\]', r.stdout)
-            if m:
-                return int(m.group(1))
-    except Exception:
-        pass
+    # fallback: ALSA Master or PCM on card 0 (USB DAC)
+    for ctrl in ('Master', 'PCM'):
+        try:
+            r = subprocess.run(
+                ['amixer', '-c', '0', 'sget', ctrl],
+                capture_output=True, text=True, timeout=3,
+            )
+            if r.returncode == 0:
+                m = re.search(r'\[(\d+)%\]', r.stdout)
+                if m:
+                    return int(m.group(1))
+        except Exception:
+            pass
     return -1
 
 
@@ -410,7 +412,7 @@ def robot_start(node: "DashboardNode") -> tuple:
                 "source /opt/ros/jazzy/setup.bash && "
                 f"source {repo}/install/setup.bash && "
                 "if [ -f ~/maki_ws/install/setup.bash ]; then source ~/maki_ws/install/setup.bash; fi && "
-                "ros2 launch maki_operational_nodes presentation_mode_v3.launch.py"
+                f"ros2 launch {repo}/src/core/maki_operational_nodes/launch/presentation_mode_v3.launch.py"
             )
             log_fh = open(ROBOT_LOG, "w")
             node._robot_proc = subprocess.Popen(

@@ -78,10 +78,6 @@ class LLMBridge(Node):
             self.get_logger().error(f"Failed to send system prompt: {e}")
 
     def _on_request(self, msg: String) -> None:
-        # Re-read host param so dashboard "Apply LLM" takes effect without restart
-        host = self.get_parameter('laptop_host').value
-        self.endpoint = host.rstrip('/') + self._endpoint_path
-
         user_text = msg.data
         stripped = user_text.strip()
         if not stripped:
