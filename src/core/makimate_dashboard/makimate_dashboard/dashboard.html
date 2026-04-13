@@ -321,7 +321,10 @@ function setParam(node, pn) {
   const el = document.getElementById(`v_${node}_${pn}`);
   if (!el) return;
   const p = PARAMS[node]?.find(x => x.n === pn);
-  const val = (p?.t === 'b') ? String(el.checked) : el.value;
+  // Float params: ensure decimal point so ROS2 doesn't reject as wrong type (e.g. "8" → "8.0")
+  const val = (p?.t === 'b') ? String(el.checked)
+            : (p?.t === 'f') ? (el.value.includes('.') ? el.value : el.value + '.0')
+            : el.value;
   send({type:'param_set', node, param:pn, value:val});
   const btn = document.getElementById(`b_${node}_${pn}`);
   if (btn) { btn.textContent='...'; btn.disabled=true; }

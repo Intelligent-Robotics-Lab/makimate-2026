@@ -24,7 +24,7 @@ def generate_launch_description():
             + "ros2 run makimate_asr respeaker_whisper_asr "
               "--ros-args "
               "-p device:=respeaker_shared "
-              "-p model_size:=base "
+              "-p model_size:=tiny "
               "-p asr_topic:=/asr/text "
               "-p enable_topic:=/asr/enable "
               "-p no_speech_threshold:=0.6 "
