@@ -385,9 +385,9 @@ class ReSpeakerWhisperASR(Node):
         if not text:
             return None
 
-        # Single noise word or pure punctuation (e.g. ".")
+        # All words are noise / punctuation (catches "Ha ha ha.", "uh um", ".")
         words = text.split()
-        if len(words) == 1 and words[0].lower().strip('.,!?') in NOISE_WORDS | {''}:
+        if all(w.lower().strip('.,!?') in NOISE_WORDS | {''} for w in words):
             self.get_logger().debug(f"Filtered noise: {text!r}")
             return None
 

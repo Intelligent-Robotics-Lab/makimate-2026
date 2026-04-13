@@ -16,7 +16,7 @@ _EMOJI_RE = re.compile(
 )
 
 def _strip_emojis(text: str) -> str:
-    return _EMOJI_RE.sub('', text).strip()
+    return _EMOJI_RE.sub('', text)
 
 
 SYSTEM_PROMPT = """
@@ -91,6 +91,7 @@ class LLMBridge(Node):
         if new_host:
             self.endpoint = new_host.rstrip('/') + self._endpoint_path
             self.get_logger().info(f"LLM host updated to {self.endpoint}")
+            threading.Thread(target=self._warmup, daemon=True).start()
 
     def _set_asr_enabled(self, enabled: bool) -> None:
         msg = Bool()
