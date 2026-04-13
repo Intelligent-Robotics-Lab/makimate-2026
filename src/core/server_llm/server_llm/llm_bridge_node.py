@@ -1,6 +1,7 @@
 import re
 import sys
-import time  # you can keep this or remove if unused elsewhere
+import threading
+import time
 from typing import Optional
 
 import rclpy
@@ -63,6 +64,27 @@ class LLMBridge(Node):
         self.get_logger().info(f"Listening for requests on {self.request_topic}")
 
         self._send_system_prompt()
+        threading.Thread(target=self._warmup, daemon=True).start()
+
+    def _warmup(self) -> None:
+        """Pre-fill the KV cache before first real user message, then reset history."""
+        base = self.endpoint.rsplit('/', 1)[0]  # e.g. http://host:8000
+        try:
+            # 1. Fire a real inference to warm the model
+            with requests.post(
+                self.endpoint,
+                json={"message": "Hello"},
+                stream=True,
+                timeout=self.timeout_secs,
+            ) as resp:
+                resp.raise_for_status()
+                for _ in resp.iter_content(chunk_size=None):
+                    pass  # discard response
+            # 2. Reset conversation history so the warm-up exchange is invisible
+            requests.post(self.endpoint, json={"message": "/reset"}, timeout=10)
+            self.get_logger().info("LLM warmed up — first user message will be fast.")
+        except Exception as e:
+            self.get_logger().warn(f"LLM warm-up failed: {e}")
 
     def _on_set_host(self, msg: String) -> None:
         new_host = msg.data.strip()
