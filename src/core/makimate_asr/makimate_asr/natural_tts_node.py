@@ -1,9 +1,18 @@
 import queue
+import re
 import threading
 import time
 import subprocess
 import shlex
 from typing import Optional
+
+# Fix missing spaces after punctuation (Ollama tokens often omit leading space)
+# and replace colons with a comma-space so piper doesn't say "colon".
+_PUNCT_FIX = re.compile(r'([.!?,;])([A-Za-z])')
+def _clean_for_tts(text: str) -> str:
+    text = text.replace(':', ', ')
+    text = _PUNCT_FIX.sub(r'\1 \2', text)
+    return text.strip()
 
 import rclpy
 from rclpy.node import Node
@@ -266,16 +275,17 @@ class NaturalTTS(Node):
             if ch in {".", "!", "?"}:
                 sentence_end_positions.append(i)
 
-        # If we have at least one sentence boundary and haven't sent the first
-        # sentence yet, flush JUST the first sentence immediately, regardless
-        # of _flush_min_words.
+        # Flush first sentence early only if it's substantial (>=5 words).
+        # Single-word affirmations like "Sure!" stay buffered so they don't
+        # play alone with a long silence before the rest of the answer.
         if not self._first_sentence_sent and sentence_end_positions:
             first_pos = sentence_end_positions[0]
-            phrase = buf[: first_pos + 1].strip()
-            remainder = buf[first_pos + 1 :].lstrip()
-            self._buffer = remainder
-            self._first_sentence_sent = True
-            return phrase
+            first_phrase = buf[: first_pos + 1].strip()
+            if len(first_phrase.split()) >= 5:
+                remainder = buf[first_pos + 1 :].lstrip()
+                self._buffer = remainder
+                self._first_sentence_sent = True
+                return first_phrase
 
         # Normal sentence-based flushing (after the first sentence)
         if word_count >= self._flush_min_words and sentence_end_positions:
@@ -445,7 +455,7 @@ class NaturalTTS(Node):
                 full_cmd, shell=True,
                 stdin=subprocess.PIPE, stderr=subprocess.DEVNULL,
             )
-            proc.communicate(input=(text.strip() + "\n").encode())
+            proc.communicate(input=(_clean_for_tts(text) + "\n").encode())
             self._last_tts_activity_time = time.time()
         except Exception as e:
             self.get_logger().error(f"[piper_cli] Error: {e}")
