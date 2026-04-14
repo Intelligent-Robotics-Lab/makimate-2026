@@ -14,13 +14,13 @@ robot_limits:
   2: {min: 1600, max: 2400}    # neck_pitch — needs full range calibration
   3: {min:  800, max: 2200}    # broken     — not commanded
   4: {min:  800, max: 2200}    # broken     — not commanded
-  5: {min:  490, max:  933}    # lid_left   — confirmed: 490=closed, 933=open
-  6: {min:  122, max:  549}    # lid_right  — confirmed: 122=open,   549=closed
+  5: {min:  490, max:  972}    # lid_left   — confirmed: 490=closed, 972=open
+  6: {min:  120, max:  629}    # lid_right  — confirmed: 120=open,   629=closed
 
 robot_neutral_positions:
   1: 2077    # neck_yaw   — centered (confirmed by dxl_nudge.py)
   2: 2032    # neck_pitch — upright  (confirmed)
   3: 1500    # broken     — parked
   4: 1500    # broken     — parked
-  5:  711    # lid_left   — half open (midpoint 490–933)
-  6:  335    # lid_right  — half open (midpoint 122–549)
+  5:  731    # lid_left   — half open (midpoint 490–972)
+  6:  374    # lid_right  — half open (midpoint 120–629)
