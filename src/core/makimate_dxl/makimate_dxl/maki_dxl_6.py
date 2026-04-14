@@ -40,16 +40,16 @@ _DEFAULT_ROBOT_LIMITS = {
     2: {"min": 1600, "max": 2400},  # neck_pitch
     3: {"min":  800, "max": 2200},  # broken — parked
     4: {"min":  800, "max": 2200},  # broken — parked
-    5: {"min":  490, "max":  933},  # lid_left
-    6: {"min":  122, "max":  549},  # lid_right
+    5: {"min":  490, "max":  972},  # lid_left  (closed=490, open=972)
+    6: {"min":  120, "max":  629},  # lid_right (open=120,  closed=629)
 }
 _DEFAULT_NEUTRAL_POSITIONS = {
     1: 2145,  # neck_yaw   — centered
     2: 2032,  # neck_pitch — upright
     3: 1500,  # broken     — parked
     4: 1500,  # broken     — parked
-    5:  711,  # lid_left   — half open
-    6:  335,  # lid_right  — half open
+    5:  731,  # lid_left   — half open  (490+972)//2
+    6:  374,  # lid_right  — half open  (120+629)//2
 }
 
 # Default config file location — resolve symlinks first so colcon --symlink-install works.
