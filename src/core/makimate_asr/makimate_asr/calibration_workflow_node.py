@@ -31,6 +31,7 @@ class CalibrationWorkflowNode(Node):
         self.calibration_start_pub = self.create_publisher(String, '/voice/start_calibration', 10)
         self.record_segment_pub = self.create_publisher(Bool, '/voice/record_segment', 10)
         self.finish_calibration_pub = self.create_publisher(Bool, '/voice/finish_calibration', 10)
+        self.calibration_active_pub = self.create_publisher(Bool, '/calibration/active', 10)
 
         # Subscribers
         self.asr_sub = self.create_subscription(
@@ -64,6 +65,11 @@ class CalibrationWorkflowNode(Node):
         self.get_logger().info('Calibration Workflow Node ready')
         self.get_logger().info('Say "calibrate" to begin voice enrollment')
 
+    def _set_active(self, active: bool):
+        msg = Bool()
+        msg.data = active
+        self.calibration_active_pub.publish(msg)
+
     def speak(self, text):
         """Send text to TTS."""
         msg = String()
@@ -84,6 +90,7 @@ class CalibrationWorkflowNode(Node):
             if 'calibrate' in text or 'calibration' in text:
                 self.get_logger().info('Calibration requested!')
                 self.state = 'WAITING_FOR_NAME'
+                self._set_active(True)
                 self.speak("What's your name?")
 
         elif self.state == 'WAITING_FOR_NAME':
@@ -182,6 +189,7 @@ class CalibrationWorkflowNode(Node):
 
             self.state = 'IDLE'
             self.pending_name = None
+            self._set_active(False)
 
         elif status.startswith('error:'):
             error_type = status.split(':')[1] if ':' in status else 'unknown'
@@ -197,6 +205,7 @@ class CalibrationWorkflowNode(Node):
 
             self.state = 'IDLE'
             self.pending_name = None
+            self._set_active(False)
 
     def calibration_progress_callback(self, msg):
         """Handle calibration progress updates."""

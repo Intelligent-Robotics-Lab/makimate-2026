@@ -85,6 +85,8 @@ class ASRCommandRouter(Node):
             Float32, '/voice/speaker_confidence', self._on_speaker_confidence, 10, callback_group=_cg)
         self.face_tracks_sub = self.create_subscription(
             FaceTrackArray, '/maki/face_tracks', self._on_face_tracks, 10, callback_group=_cg)
+        self._calibration_active = False
+        self.create_subscription(Bool, '/calibration/active', self._on_calibration_active, 10, callback_group=_cg)
 
         # ---- State ----
         self._awake = False
@@ -255,6 +257,11 @@ class ASRCommandRouter(Node):
             )
             return
 
+        # Don't forward to LLM while calibration workflow is active
+        if self._calibration_active:
+            self.get_logger().info("[Router] Calibration active — not forwarding to LLM.")
+            return
+
         # Normal conversation → forward to LLM with identity context.
         # Wait briefly for any fresher speaker embedding to arrive.
         time.sleep(0.30)
@@ -276,6 +283,10 @@ class ASRCommandRouter(Node):
         out.data = llm_text
         self._llm_req_pub.publish(out)
         self.get_logger().info("[Router->LLM] forwarded user text.")
+
+    def _on_calibration_active(self, msg: Bool):
+        self._calibration_active = bool(msg.data)
+        self.get_logger().info(f"Calibration active: {self._calibration_active}")
 
     def _on_asr_enable(self, msg: Bool):
         enabled = bool(msg.data)
