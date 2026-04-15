@@ -94,10 +94,8 @@ class FaceToMaki(Node):
         for p in params:
             if p.name == "camera_offset_x":
                 self.camera_offset_x = float(p.value)
-                self.get_logger().info(f"[live] camera_offset_x = {self.camera_offset_x}")
             elif p.name == "camera_offset_y":
                 self.camera_offset_y = float(p.value)
-                self.get_logger().info(f"[live] camera_offset_y = {self.camera_offset_y}")
             elif p.name == "invert_x":
                 self.invert_x = bool(p.value)
             elif p.name == "invert_y":
