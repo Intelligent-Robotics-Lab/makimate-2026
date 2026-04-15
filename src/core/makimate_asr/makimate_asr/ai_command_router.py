@@ -231,6 +231,11 @@ class ASRCommandRouter(Node):
                 self._speak_immediate(self._wake_greeting)
             return
 
+        # Calibration command — let calibration_workflow_node handle it exclusively
+        if 'calibrate' in low or 'calibration' in low:
+            self.get_logger().info("[Router] Calibration command — not forwarding to LLM.")
+            return
+
         # Sleep phrases — go to sleep
         if any(phrase in low for phrase in self._sleep_phrases):
             self.get_logger().info(f"Sleep phrase detected: {text!r}")
