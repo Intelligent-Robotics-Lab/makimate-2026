@@ -288,7 +288,7 @@ class ASRCommandRouter(Node):
 
         name, conf = self._fuse_identity()
         if name and conf >= FUSED_THRESHOLD:
-            llm_text = f"[The person speaking with you is {name}.] {text}"
+            llm_text = f"{text} (My name is {name}, please use it in your reply.)"
             self.get_logger().info(
                 f"Injecting identity into LLM: {name} (fused_conf={conf:.2f})"
             )
