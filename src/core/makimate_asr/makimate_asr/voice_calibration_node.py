@@ -4,7 +4,7 @@ import json
 import pickle
 import numpy as np
 from vosk import Model, KaldiRecognizer, SpkModel
-import pyaudio
+import sounddevice as sd
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String, Bool, Float32
@@ -59,7 +59,6 @@ class VoiceCalibrationNode(Node):
         self.recording_thread = None
         
         # Audio setup
-        self.p = None
         self.stream = None
         self.rec = None
         
@@ -201,15 +200,14 @@ class VoiceCalibrationNode(Node):
         time.sleep(0.5)
 
         try:
-            self.p = pyaudio.PyAudio()
-            self.stream = self.p.open(
-                format=pyaudio.paInt16,
+            self.stream = sd.RawInputStream(
+                samplerate=self.sample_rate,
+                blocksize=4000,
+                device=0,  # ReSpeaker — matches respeaker_vosk_asr
+                dtype='int16',
                 channels=1,
-                rate=self.sample_rate,
-                input=True,
-                input_device_index=1,  # ReSpeaker
-                frames_per_buffer=4000
             )
+            self.stream.start()
             self.get_logger().info('✅ Audio stream opened — recording started')
         except Exception as e:
             self.get_logger().error(f'Failed to open microphone: {e}')
@@ -228,7 +226,7 @@ class VoiceCalibrationNode(Node):
         """Background thread that reads audio while recording_active is True."""
         while self.recording_active and self.stream:
             try:
-                data = self.stream.read(4000, exception_on_overflow=False)
+                data, _ = self.stream.read(4000)
                 
                 if self.rec.AcceptWaveform(data):
                     result = json.loads(self.rec.Result())
@@ -331,13 +329,9 @@ class VoiceCalibrationNode(Node):
             self.recording_thread = None
         
         if self.stream:
-            self.stream.stop_stream()
+            self.stream.stop()
             self.stream.close()
             self.stream = None
-        
-        if self.p:
-            self.p.terminate()
-            self.p = None
         
         self.is_calibrating = False
         self.current_speaker_name = None
