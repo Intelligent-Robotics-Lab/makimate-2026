@@ -203,7 +203,7 @@ class VoiceCalibrationNode(Node):
             self.stream = sd.RawInputStream(
                 samplerate=self.sample_rate,
                 blocksize=4000,
-                device=0,  # ReSpeaker — matches respeaker_vosk_asr
+                device='respeaker_shared',  # matches respeaker_vosk_asr
                 dtype='int16',
                 channels=1,
             )
