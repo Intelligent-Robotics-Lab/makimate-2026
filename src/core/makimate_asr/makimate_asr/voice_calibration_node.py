@@ -229,6 +229,9 @@ class VoiceCalibrationNode(Node):
                 
                 if self.rec.AcceptWaveform(data):
                     result = json.loads(self.rec.Result())
+                    if 'spk' in result:
+                        self.speaker_vectors.append(result['spk'])
+                        self.get_logger().info(f'Captured speaker vector ({len(self.speaker_vectors)} so far)')
                     if 'text' in result and result['text']:
                         self.get_logger().debug(f'Heard: "{result["text"]}"')
             
