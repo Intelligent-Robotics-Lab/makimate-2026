@@ -67,6 +67,7 @@ class VoiceCalibrationNode(Node):
         self.status_pub = self.create_publisher(String, '/voice/calibration_status', 10)
         self.progress_pub = self.create_publisher(Float32, '/voice/calibration_progress', 10)
         self.ready_pub = self.create_publisher(Bool, '/voice/calibration_ready', 10)
+        self.asr_enable_pub = self.create_publisher(Bool, '/asr/enable', 10)
         
         # Subscribers
         self.start_sub = self.create_subscription(
@@ -206,6 +207,12 @@ class VoiceCalibrationNode(Node):
         should_record = msg.data
         
         if should_record and not self.recording_active:
+            # Disable ASR so respeaker_whisper_asr releases the mic
+            asr_msg = Bool()
+            asr_msg.data = False
+            self.asr_enable_pub.publish(asr_msg)
+            self.get_logger().info('ASR disabled — exclusive mic access for calibration')
+
             # Start recording this segment
             self.recording_active = True
             self.rec.Reset()  # Clear previous audio
@@ -339,7 +346,13 @@ class VoiceCalibrationNode(Node):
         self.is_calibrating = False
         self.current_speaker_name = None
         self.speaker_vectors = []
-        
+
+        # Re-enable ASR
+        asr_msg = Bool()
+        asr_msg.data = True
+        self.asr_enable_pub.publish(asr_msg)
+        self.get_logger().info('ASR re-enabled after calibration')
+
         self.get_logger().info('Calibration session ended')
     
     def destroy_node(self):
