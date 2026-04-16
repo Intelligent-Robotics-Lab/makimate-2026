@@ -227,8 +227,8 @@ class VoiceCalibrationNode(Node):
         while self.recording_active and self.stream:
             try:
                 data, _ = self.stream.read(4000)
-                
-                if self.rec.AcceptWaveform(data):
+
+                if self.rec.AcceptWaveform(bytes(data)):
                     result = json.loads(self.rec.Result())
                     if 'spk' in result:
                         self.speaker_vectors.append(result['spk'])
