@@ -22,6 +22,13 @@ _MAKI_ALIASES = [
     "marky", "markee", "markey", "maki mate", "mockey mate", "rocky", "Rocky",
 ]
 
+# Word-level corrections for common Whisper mis-transcriptions.
+# Applied before LLM forwarding. Format: (wrong, correct) — case-insensitive match.
+_WORD_CORRECTIONS = [
+    ("sector", "center"),
+    ("louis", "louie"),
+]
+
 
 class ASRCommandRouter(Node):
     """
@@ -206,6 +213,14 @@ class ASRCommandRouter(Node):
             self.get_logger().info(f"[ASR] Corrected to: {_corrected!r}")
             text = _corrected  # use corrected text for all further processing
             low  = _corrected
+
+        # Apply general word corrections
+        for wrong, right in _WORD_CORRECTIONS:
+            _corrected = re.sub(r'\b' + re.escape(wrong) + r'\b', right, low, flags=re.IGNORECASE)
+            if _corrected != low:
+                self.get_logger().info(f"[ASR] Word correction: {wrong!r} → {right!r}")
+                text = _corrected
+                low  = _corrected
 
         # Drop Whisper hallucinations: repetitive phrases where one word
         # makes up >60% of all words (e.g. "I'm sorry I'm sorry I'm sorry...")

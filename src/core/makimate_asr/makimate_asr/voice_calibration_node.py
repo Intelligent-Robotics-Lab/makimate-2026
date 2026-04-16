@@ -163,64 +163,31 @@ class VoiceCalibrationNode(Node):
     def asr_enable_callback(self, msg):
         """Track when ASR is enabled/disabled (TTS finished/started)."""
         self.asr_enabled = msg.data
-        
-        if self.is_calibrating:
-            # Open audio stream on FIRST asr_enable after calibration starts
-            if self.asr_enabled and self.stream is None:
-                self.get_logger().info('TTS finished - opening microphone now')
-                try:
-                    self.p = pyaudio.PyAudio()
-                    self.stream = self.p.open(
-                        format=pyaudio.paInt16,
-                        channels=1,
-                        rate=self.sample_rate,
-                        input=True,
-                        input_device_index=1,  # ReSpeaker
-                        frames_per_buffer=4000
-                    )
-                    self.get_logger().info('✅ Audio stream initialized - ready to record')
-                    
-                    # Signal ready
-                    ready_msg = Bool()
-                    ready_msg.data = True
-                    self.ready_pub.publish(ready_msg)
-                    
-                except Exception as e:
-                    self.get_logger().error(f'Failed to open microphone: {e}')
-                    status_msg = String()
-                    status_msg.data = f'error:audio_init:{e}'
-                    self.status_pub.publish(status_msg)
-                    self.cleanup_calibration()
-            
-            elif self.asr_enabled and not self.recording_active and self.stream is not None:
-                # ASR re-enabled (TTS finished) - signal ready to record next segment
-                ready_msg = Bool()
-                ready_msg.data = True
-                self.ready_pub.publish(ready_msg)
-                self.get_logger().debug('Ready to record next segment')
+
+        if self.is_calibrating and self.asr_enabled and not self.recording_active:
+            # TTS finished — signal ready. Stream opens in record_segment_callback
+            # only after ASR is disabled so we get exclusive mic access.
+            self.get_logger().info('TTS finished - ready to record')
+            ready_msg = Bool()
+            ready_msg.data = True
+            self.ready_pub.publish(ready_msg)
     
     def record_segment_callback(self, msg):
         """Start/stop recording a segment."""
-        if not self.is_calibrating or self.stream is None:
+        if not self.is_calibrating:
             return
-        
+
         should_record = msg.data
-        
+
         if should_record and not self.recording_active:
-            # Disable ASR so respeaker_whisper_asr releases the mic
+            # Disable ASR first so respeaker_whisper_asr releases the mic
             asr_msg = Bool()
             asr_msg.data = False
             self.asr_enable_pub.publish(asr_msg)
-            self.get_logger().info('ASR disabled — exclusive mic access for calibration')
+            self.get_logger().info('ASR disabled — waiting for mic release...')
 
-            # Start recording this segment
-            self.recording_active = True
-            self.rec.Reset()  # Clear previous audio
-            self.get_logger().info('🎤 Recording segment started')
-            
-            # Start background thread to read audio
-            self.recording_thread = threading.Thread(target=self._record_loop, daemon=True)
-            self.recording_thread.start()
+            # Start in background so we can sleep without blocking the ROS executor
+            threading.Thread(target=self._start_recording, daemon=True).start()
             
         elif not should_record and self.recording_active:
             # Stop recording
@@ -228,6 +195,35 @@ class VoiceCalibrationNode(Node):
             self.get_logger().info('⏹️  Recording segment stopped')
             # Processing happens in _record_loop when it exits
     
+    def _start_recording(self):
+        """Open mic after a short delay (gives respeaker time to release ALSA device)."""
+        import time
+        time.sleep(0.5)
+
+        try:
+            self.p = pyaudio.PyAudio()
+            self.stream = self.p.open(
+                format=pyaudio.paInt16,
+                channels=1,
+                rate=self.sample_rate,
+                input=True,
+                input_device_index=1,  # ReSpeaker
+                frames_per_buffer=4000
+            )
+            self.get_logger().info('✅ Audio stream opened — recording started')
+        except Exception as e:
+            self.get_logger().error(f'Failed to open microphone: {e}')
+            status_msg = String()
+            status_msg.data = f'error:audio_init:{e}'
+            self.status_pub.publish(status_msg)
+            self.cleanup_calibration()
+            return
+
+        self.recording_active = True
+        self.rec.Reset()
+        self.get_logger().info('🎤 Recording segment started')
+        self._record_loop()
+
     def _record_loop(self):
         """Background thread that reads audio while recording_active is True."""
         while self.recording_active and self.stream:
