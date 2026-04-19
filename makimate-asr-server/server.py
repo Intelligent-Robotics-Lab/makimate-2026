@@ -127,11 +127,10 @@ async def transcribe(audio: UploadFile = File(...)):
     segments, info = m.transcribe(
         audio_np,
         language="en",
-        beam_size=5,
+        beam_size=1,          # greedy — ~5x faster than beam_size=5, fine for short commands
         temperature=0,
         condition_on_previous_text=False,
-        vad_filter=True,
-        vad_parameters=dict(min_silence_duration_ms=200),
+        vad_filter=False,     # audio is already VAD-gated on the Pi — skip redundant pass
     )
 
     parts = [seg.text.strip() for seg in segments]
