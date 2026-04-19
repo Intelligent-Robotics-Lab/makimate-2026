@@ -63,7 +63,7 @@ class NaturalTTS(Node):
         self.declare_parameter("length_scale", 0.75)
         self.declare_parameter("noise_scale", 0.6)
         self.declare_parameter("noise_w", 0.4)
-        self.declare_parameter("sentence_silence", 0.25)
+        self.declare_parameter("sentence_silence", 0.0)
         self.declare_parameter("idle_flush_seconds", 0.5)
 
 
