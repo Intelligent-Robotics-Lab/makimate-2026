@@ -1,5 +1,6 @@
 import queue
 import threading
+import time
 import os
 from typing import Optional
 
@@ -261,11 +262,12 @@ class ReSpeakerVoskASR(Node):
 
         msg = String()
         msg.data = text
-        self.get_logger().info(f"ASR text: {text!r}")
+        t = time.time()
+        self.get_logger().info(f"[LATENCY] ASR finalized at t={t:.3f}: {text!r}")
         self.asr_pub.publish(msg)
 
         if self.publish_llm:
-            self.get_logger().info(f"Forwarding to LLM topic: {self.llm_topic}")
+            self.get_logger().info(f"[LATENCY] ASR→LLM publish at t={t:.3f}")
             self.llm_pub.publish(msg)
 
 

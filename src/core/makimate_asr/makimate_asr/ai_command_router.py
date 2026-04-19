@@ -203,6 +203,8 @@ class ASRCommandRouter(Node):
         if not text:
             return
 
+        self._turn_start_time = time.time()
+        self.get_logger().info(f"[LATENCY] Router received ASR at t={self._turn_start_time:.3f}")
         self.get_logger().info(f"[ASR] Heard: {text!r}")
 
         # Normalise phonetic mis-transcriptions of "Maki" → "maki"
@@ -284,7 +286,13 @@ class ASRCommandRouter(Node):
 
         # Normal conversation → forward to LLM with identity context.
         # Wait briefly for any fresher speaker embedding to arrive.
+        t_before_sleep = time.time()
         time.sleep(0.30)
+        t_after_sleep = time.time()
+        self.get_logger().info(
+            f"[LATENCY] Identity sleep: {(t_after_sleep - t_before_sleep)*1000:.0f}ms "
+            f"(router→LLM so far: {(t_after_sleep - self._turn_start_time)*1000:.0f}ms)"
+        )
 
         name, conf = self._fuse_identity()
         if name and conf >= FUSED_THRESHOLD:
@@ -302,7 +310,10 @@ class ASRCommandRouter(Node):
         out = String()
         out.data = llm_text
         self._llm_req_pub.publish(out)
-        self.get_logger().info("[Router->LLM] forwarded user text.")
+        self.get_logger().info(
+            f"[LATENCY] Router→LLM forwarded at t={time.time():.3f} "
+            f"(+{(time.time() - self._turn_start_time)*1000:.0f}ms from ASR received)"
+        )
 
     def _on_calibration_active(self, msg: Bool):
         self._calibration_active = bool(msg.data)

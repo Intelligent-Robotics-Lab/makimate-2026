@@ -142,7 +142,10 @@ class LLMBridge(Node):
             self.get_logger().error(f"Error sending command to LLM server: {e}")
 
     def _send_chat(self, text: str) -> None:
-        self.get_logger().info(f"Sending chat to LLM server: {text!r}")
+        t_request = time.time()
+        self.get_logger().info(
+            f"[LATENCY] LLM request sent at t={t_request:.3f}: {text!r}"
+        )
 
         # Mute ASR for the whole time the LLM is processing
         self._set_asr_enabled(False)
@@ -157,6 +160,7 @@ class LLMBridge(Node):
                 resp.raise_for_status()
 
                 full_answer_parts = []
+                first_token = True
                 for chunk in resp.iter_content(chunk_size=None):
                     if not chunk:
                         continue
@@ -164,19 +168,30 @@ class LLMBridge(Node):
                     if not piece:
                         continue
 
+                    if first_token:
+                        t_first_token = time.time()
+                        self.get_logger().info(
+                            f"[LATENCY] LLM first token at t={t_first_token:.3f} "
+                            f"(+{(t_first_token - t_request)*1000:.0f}ms from request)"
+                        )
+                        first_token = False
+
                     full_answer_parts.append(piece)
 
                     s = String()
                     s.data = piece
                     self.stream_pub.publish(s)
 
+                t_done = time.time()
                 full_answer = ''.join(full_answer_parts).strip()
                 if full_answer:
                     out = String()
                     out.data = full_answer
                     self.response_pub.publish(out)
                     self.get_logger().info(
-                        f"Final LLM response length: {len(full_answer)}"
+                        f"[LATENCY] LLM stream done at t={t_done:.3f} "
+                        f"(+{(t_done - t_request)*1000:.0f}ms total, "
+                        f"{len(full_answer)} chars)"
                     )
         except requests.RequestException as e:
             self.get_logger().error(f"Error during chat with LLM server: {e}")

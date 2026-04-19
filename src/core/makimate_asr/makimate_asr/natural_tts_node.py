@@ -172,6 +172,12 @@ class NaturalTTS(Node):
             return
 
         now = time.time()
+        if not hasattr(self, '_first_chunk_received') or not self._first_chunk_received:
+            self._first_chunk_received = True
+            self._first_chunk_time = now
+            self.get_logger().info(
+                f"[LATENCY] TTS received first LLM chunk at t={now:.3f}"
+            )
 
         with self._buf_lock:
             self._last_chunk_time = now  # LLM activity time
@@ -231,11 +237,15 @@ class NaturalTTS(Node):
 
         # We do the speaking enqueuing OUTSIDE the lock
         if to_speak:
+            t_enqueue = time.time()
             self.get_logger().info(
-                f"Streaming TTS buffered chunk: {to_speak!r}"
+                f"[LATENCY] TTS first phrase queued at t={t_enqueue:.3f} "
+                f"(+{(t_enqueue - self._first_chunk_time)*1000:.0f}ms after first chunk): "
+                f"{to_speak!r}"
             )
             # Mark TTS activity when we enqueue this
-            self._last_tts_activity_time = time.time()
+            self._last_tts_activity_time = t_enqueue
+            self._first_chunk_received = False  # reset for next turn
             self._queue.put(to_speak)
 
 
@@ -330,10 +340,11 @@ class NaturalTTS(Node):
 
         if to_speak:
             self.get_logger().info(
-                f"Idle flush TTS chunk: {to_speak!r}"
+                f"[LATENCY] Idle flush TTS chunk: {to_speak!r}"
             )
             # Mark TTS activity when we enqueue this
             self._last_tts_activity_time = time.time()
+            self._first_chunk_received = False  # reset for next turn
             self._queue.put(to_speak)
 
     # ======================================================================
@@ -448,15 +459,26 @@ class NaturalTTS(Node):
             self.get_logger().error("Piper not initialised.")
             return
 
-        self.get_logger().info(f"[piper_cli] Speaking: {text!r}")
+        t_piper_start = time.time()
+        self.get_logger().info(
+            f"[LATENCY] Piper subprocess start at t={t_piper_start:.3f}: {text!r}"
+        )
         full_cmd = f"{self._piper_cmd_str} | {self.piper_audio_command}"
         try:
             proc = subprocess.Popen(
                 full_cmd, shell=True,
                 stdin=subprocess.PIPE, stderr=subprocess.DEVNULL,
             )
+            t_piper_spawned = time.time()
+            self.get_logger().info(
+                f"[LATENCY] Piper process spawned in {(t_piper_spawned - t_piper_start)*1000:.0f}ms"
+            )
             proc.communicate(input=(_clean_for_tts(text) + "\n").encode())
-            self._last_tts_activity_time = time.time()
+            t_piper_done = time.time()
+            self.get_logger().info(
+                f"[LATENCY] Piper audio done in {(t_piper_done - t_piper_start)*1000:.0f}ms total"
+            )
+            self._last_tts_activity_time = t_piper_done
         except Exception as e:
             self.get_logger().error(f"[piper_cli] Error: {e}")
 
