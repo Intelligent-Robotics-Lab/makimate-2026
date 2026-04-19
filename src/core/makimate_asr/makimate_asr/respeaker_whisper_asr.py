@@ -230,6 +230,9 @@ class ReSpeakerWhisperASR(Node):
             elif p.name == 'no_speech_threshold':
                 self.no_speech_thr = float(p.value)
                 self.get_logger().info(f'[live] no_speech_threshold = {self.no_speech_thr}')
+            elif p.name == 'server_url':
+                self.server_url = str(p.value).strip()
+                self.get_logger().info(f'[live] server_url = {self.server_url!r}')
             elif p.name in ('vad_aggressiveness', 'silence_ms'):
                 # Rebuild chunker with new settings
                 agg = int(self.get_parameter('vad_aggressiveness').value)
