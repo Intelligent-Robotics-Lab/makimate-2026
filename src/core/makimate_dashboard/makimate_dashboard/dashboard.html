@@ -183,6 +183,15 @@ input[type=checkbox]{accent-color:#f56565;cursor:pointer}
         <button class="btn" onclick="checkWhisperServer()">Check Server</button>
       </div>
       <div id="whisper-status" style="font-size:.68em;color:#718096;margin-top:-4px;min-height:1.2em"></div>
+
+      <div class="divider"></div>
+
+      <div class="cr"><label>Speaker Identity</label>
+        <button id="identity-toggle" class="btn" onclick="toggleIdentity()">Enabled</button>
+      </div>
+      <div style="font-size:.68em;color:#718096;margin-top:-4px">
+        When disabled, skips voice/face recognition wait and name injection — saves ~300ms per turn.
+      </div>
     </div>
 
     <!-- Parameters -->
@@ -404,11 +413,25 @@ async function checkWhisperServer() {
   }
 }
 
+function toggleIdentity() {
+  const btn = document.getElementById('identity-toggle');
+  const enabled = btn.textContent.trim() === 'Enabled';
+  const newVal = !enabled;
+  btn.textContent = newVal ? 'Enabled' : 'Disabled';
+  btn.style.background = newVal ? '' : '#e53e3e';
+  send({type: 'server_config', identity_enabled: newVal});
+}
+
 function applyServerConfigUI(cfg) {
   if (cfg.llm_server_url  !== undefined) document.getElementById('llm_server_url').value  = cfg.llm_server_url;
   if (cfg.llm_model       !== undefined) document.getElementById('llm_model').value       = cfg.llm_model;
   if (cfg.whisper_server_url !== undefined) document.getElementById('whisper_server_url').value = cfg.whisper_server_url;
   if (cfg.whisper_model   !== undefined) document.getElementById('whisper_model').value   = cfg.whisper_model;
+  if (cfg.identity_enabled !== undefined) {
+    const btn = document.getElementById('identity-toggle');
+    btn.textContent = cfg.identity_enabled ? 'Enabled' : 'Disabled';
+    btn.style.background = cfg.identity_enabled ? '' : '#e53e3e';
+  }
 }
 
 // ───────────────────────────────────────────────────────────────────

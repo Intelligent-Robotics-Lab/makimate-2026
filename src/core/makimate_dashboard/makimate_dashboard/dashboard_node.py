@@ -33,6 +33,7 @@ SERVER_CONFIG: Dict = {
     "llm_model": "",
     "whisper_server_url": "",
     "whisper_model": "base",
+    "identity_enabled": True,
 }
 
 # ------------------------------------------------------------------ #
@@ -658,7 +659,7 @@ async def _handle(ws: WebSocket, node: DashboardNode, msg: dict):
         asyncio.create_task(_do_restart())
 
     elif t == "server_config":
-        for key in ("llm_server_url", "llm_model", "whisper_server_url", "whisper_model"):
+        for key in ("llm_server_url", "llm_model", "whisper_server_url", "whisper_model", "identity_enabled"):
             if key in msg:
                 SERVER_CONFIG[key] = msg[key]
 
@@ -687,6 +688,12 @@ async def _handle(ws: WebSocket, node: DashboardNode, msg: dict):
                 await loop.run_in_executor(
                     None, _whisper_server_set_model, server_url, msg["whisper_model"], node
                 )
+
+        if "identity_enabled" in msg:
+            await loop.run_in_executor(
+                None, ros2_param_set, "ai_command_router", "identity_enabled",
+                str(msg["identity_enabled"]).lower()
+            )
 
         await node._broadcast(json.dumps({"type": "server_config", "config": SERVER_CONFIG}))
         node.get_logger().info(f"Server config updated: {SERVER_CONFIG}")
