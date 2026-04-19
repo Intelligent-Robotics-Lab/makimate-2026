@@ -64,6 +64,7 @@ class NaturalTTS(Node):
         self.declare_parameter("noise_scale", 0.6)
         self.declare_parameter("noise_w", 0.4)
         self.declare_parameter("sentence_silence", 0.25)
+        self.declare_parameter("idle_flush_seconds", 0.5)
 
 
         # ---------- Read parameters ----------
@@ -130,7 +131,7 @@ class NaturalTTS(Node):
         self._flush_hard_max_words = 60
         self._flush_max_chars = 400
         # - idle time before flushing leftover at end of answer
-        self._idle_flush_seconds = 0.5
+        self._idle_flush_seconds = float(self.get_parameter("idle_flush_seconds").value)
 
         # NEW: first-sentence & grouping behavior
         # Track whether we've already sent the first sentence for this answer.
@@ -152,10 +153,23 @@ class NaturalTTS(Node):
             10,
         )
 
+        self.add_on_set_parameters_callback(self._on_params)
+
         self.get_logger().info(
             f"NaturalTTS running. Backend={self.backend}, "
             f"input_topic={input_topic}, asr_enable_topic={asr_enable_topic}"
         )
+
+    # ======================================================================
+    # Live parameter updates
+    # ======================================================================
+    def _on_params(self, params):
+        from rcl_interfaces.msg import SetParametersResult
+        for p in params:
+            if p.name == 'idle_flush_seconds':
+                self._idle_flush_seconds = float(p.value)
+                self.get_logger().info(f'[live] idle_flush_seconds = {self._idle_flush_seconds}')
+        return SetParametersResult(successful=True)
 
     # ======================================================================
     # Streaming logic (incremental chunks)

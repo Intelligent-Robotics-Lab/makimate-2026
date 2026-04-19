@@ -215,6 +215,7 @@ const NODE_DESC = {
   respeaker_dsp:           "Hardware mic filtering (noise, echo, AGC)",
   respeaker_whisper_asr:   "Speech recognition — what to listen to and what to reject",
   ai_command_router:       "Wake / sleep words and reply keyword filter",
+  natural_tts:             "TTS streaming — how quickly buffered text is sent to Piper",
   face_to_maki:            "Camera mounting offset — trims systematic left/right or up/down bias",
 };
 
@@ -260,6 +261,9 @@ const PARAMS = {
     {n:"wake_phrase",   l:"Wake Phrase",                          t:"s", h:"Maki starts paying attention when it hears this word or phrase."},
     {n:"sleep_phrase",  l:"Sleep Phrase",                         t:"s", h:"Maki stops listening after hearing this."},
     {n:"reply_keyword", l:"Reply Keyword (blank = always reply)", t:"s", h:"If set, Maki only responds when this word appears in the utterance."},
+  ],
+  natural_tts: [
+    {n:"idle_flush_seconds", l:"Idle Flush Delay (s)", t:"f", min:.05, max:.8, step:.05, h:"Seconds of LLM inactivity before flushing remaining buffer to Piper. Lower = faster response on short answers. 0.15 is safe for fast servers."},
   ],
   face_to_maki: [
     {n:"camera_offset_x", l:"Camera Offset — Left/Right", t:"f", min:-0.5, max:0.5, step:.01, h:"Shifts the tracking target horizontally. Positive = camera is to the right of nose, head turns left to compensate."},

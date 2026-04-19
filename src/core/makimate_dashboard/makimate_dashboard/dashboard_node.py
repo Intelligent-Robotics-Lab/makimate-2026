@@ -50,6 +50,7 @@ PARAM_REGISTRY = {
     "respeaker_whisper_asr": ["vad_aggressiveness", "silence_ms", "no_speech_threshold", "rms_threshold"],
     "ai_command_router": ["wake_phrase", "sleep_phrase"],
     "llm_bridge": ["laptop_host"],
+    "natural_tts": ["idle_flush_seconds"],
 }
 
 
