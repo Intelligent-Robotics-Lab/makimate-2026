@@ -279,11 +279,14 @@ class NaturalTTS(Node):
             self._first_sentence_sent = True
             return phrase
 
-        # Find all sentence boundaries
+        # Find all sentence boundaries and comma positions
         sentence_end_positions = []
+        comma_positions = []
         for i, ch in enumerate(buf):
             if ch in {".", "!", "?"}:
                 sentence_end_positions.append(i)
+            elif ch == ",":
+                comma_positions.append(i)
 
         # Flush first sentence early only if it's substantial (>=5 words).
         # Single-word affirmations like "Sure!" stay buffered so they don't
@@ -296,6 +299,18 @@ class NaturalTTS(Node):
                 self._buffer = remainder
                 self._first_sentence_sent = True
                 return first_phrase
+
+        # Flush at first comma if there are enough words before it (>=8).
+        # This gets audio starting sooner for long sentences without flushing
+        # short affirmations like "Sure," alone.
+        if not self._first_sentence_sent and comma_positions:
+            first_comma = comma_positions[0]
+            pre_comma = buf[: first_comma + 1].strip()
+            if len(pre_comma.split()) >= 8:
+                remainder = buf[first_comma + 1 :].lstrip()
+                self._buffer = remainder
+                self._first_sentence_sent = True
+                return pre_comma
 
         # Normal sentence-based flushing (after the first sentence)
         if word_count >= self._flush_min_words and sentence_end_positions:

@@ -13,6 +13,10 @@ from makimate_interfaces.msg import FaceTrackArray
 VOICE_THRESHOLD = 0.30
 # Minimum fused confidence to inject the user's name into the LLM message
 FUSED_THRESHOLD = 0.30
+# If a speaker ID arrived within this many seconds, skip the identity wait entirely
+IDENTITY_FRESH_SECS = 2.0
+# How long to wait for a speaker embedding if we don't have a fresh one
+IDENTITY_WAIT_SECS = 0.30
 
 # Phonetic mis-transcriptions of "Maki" that Whisper commonly produces.
 # These are replaced with "maki" before any wake-phrase or LLM logic runs.
@@ -79,6 +83,7 @@ class ASRCommandRouter(Node):
         self.current_speaker = "Unknown"
         self.current_speaker_conf = 0.0
         self.current_face_name = "Unknown"
+        self._last_speaker_id_time = 0.0  # epoch time of most recent speaker ID
 
         # Reentrant so identity callbacks can fire during sleep() in _on_asr
         _cg = ReentrantCallbackGroup()
@@ -133,6 +138,7 @@ class ASRCommandRouter(Node):
     # ------------------------------------------------------------------ #
     def _on_speaker_identified(self, msg: String):
         self.current_speaker = msg.data
+        self._last_speaker_id_time = time.time()
         self.get_logger().info(f'Speaker updated to: {self.current_speaker}')
 
     def _on_speaker_confidence(self, msg: Float32):
@@ -285,13 +291,15 @@ class ASRCommandRouter(Node):
             return
 
         # Normal conversation → forward to LLM with identity context.
-        # Wait briefly for any fresher speaker embedding to arrive.
+        # Only wait for a speaker embedding if we don't already have a fresh one.
         t_before_sleep = time.time()
-        time.sleep(0.30)
+        age = t_before_sleep - self._last_speaker_id_time
+        if age > IDENTITY_FRESH_SECS:
+            time.sleep(IDENTITY_WAIT_SECS)
         t_after_sleep = time.time()
         self.get_logger().info(
-            f"[LATENCY] Identity sleep: {(t_after_sleep - t_before_sleep)*1000:.0f}ms "
-            f"(router→LLM so far: {(t_after_sleep - self._turn_start_time)*1000:.0f}ms)"
+            f"[LATENCY] Identity wait: {(t_after_sleep - t_before_sleep)*1000:.0f}ms "
+            f"(speaker age={age:.2f}s, router→LLM so far: {(t_after_sleep - self._turn_start_time)*1000:.0f}ms)"
         )
 
         name, conf = self._fuse_identity()
