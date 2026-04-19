@@ -256,8 +256,9 @@ class ReSpeakerWhisperASR(Node):
         frame_bytes = indata[:, 0].tobytes()   # shape (FRAME_SAMPLES, 1) → bytes
         chunk = self.chunker.process(frame_bytes)
         if chunk is not None:
+            t_vad_end = time.time()
             with self._lock:
-                self._pending.append(chunk)
+                self._pending.append((chunk, t_vad_end))
 
     # ------------------------------------------------------------------ #
     # Enable / disable (called by TTS to mute mic while speaking)
@@ -270,7 +271,7 @@ class ReSpeakerWhisperASR(Node):
         if not enabled:
             self.chunker.reset()
             with self._lock:
-                self._pending.clear()
+                self._pending.clear()  # tuples of (chunk, t_vad_end)
         self.get_logger().info(f"ASR {'enabled' if enabled else 'disabled'}")
 
     # ------------------------------------------------------------------ #
@@ -278,14 +279,16 @@ class ReSpeakerWhisperASR(Node):
     # ------------------------------------------------------------------ #
     def _inference_loop(self):
         while rclpy.ok():
-            chunk = None
+            item = None
             with self._lock:
                 if self._pending:
-                    chunk = self._pending.popleft()
+                    item = self._pending.popleft()
 
-            if chunk is None:
+            if item is None:
                 time.sleep(0.02)
                 continue
+
+            chunk, t_vad_end = item
 
             if self._rms_threshold > 0.0:
                 rms = float(np.sqrt(np.mean(chunk ** 2)))
@@ -298,9 +301,20 @@ class ReSpeakerWhisperASR(Node):
             if self._save_debug_audio:
                 self._write_debug_wav(chunk)
 
+            audio_duration_ms = len(chunk) / SAMPLE_RATE * 1000
+            self.get_logger().info(
+                f"[LATENCY] VAD end at t={t_vad_end:.3f} "
+                f"(audio={audio_duration_ms:.0f}ms, silence_wait={self.chunker.silence_frames * FRAME_MS}ms)"
+            )
+            t_transcribe_start = time.time()
             text = self._transcribe(chunk)
+            t_transcribe_done = time.time()
+            self.get_logger().info(
+                f"[LATENCY] Whisper inference: {(t_transcribe_done - t_transcribe_start)*1000:.0f}ms"
+            )
+
             if text:
-                self.get_logger().info(f"ASR text: {text!r}")
+                self.get_logger().info(f"[LATENCY] ASR text published at t={t_transcribe_done:.3f}: {text!r}")
                 msg = String()
                 msg.data = text
                 self.text_pub.publish(msg)
