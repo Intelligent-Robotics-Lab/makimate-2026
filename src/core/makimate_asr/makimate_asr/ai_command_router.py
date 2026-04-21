@@ -23,7 +23,7 @@ IDENTITY_WAIT_SECS = 0.30
 # Add more as you discover them in the logs.
 _MAKI_ALIASES = [
     "mock", "mockey", "mocky", "makey", "mackey", "mackie",
-    "marky", "markee", "markey", "maki mate", "mockey mate", "rocky", "Rocky",
+    "marky", "markee", "markey", "maki mate", "mockey mate", "rocky", "Rocky", "Mahi", "Mocky",
 ]
 
 # Word-level corrections for common Whisper mis-transcriptions.
@@ -31,6 +31,7 @@ _MAKI_ALIASES = [
 _WORD_CORRECTIONS = [
     ("sector", "center"),
     ("louis", "louie"),
+    ("louise", "louie"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -295,8 +296,12 @@ class ASRCommandRouter(Node):
             self._send_llm_command(self._reset_command)
             return
 
-        # Handle "hi/hello/hey" greetings — wait briefly for any fresher embedding
-        if any(word in low.split() for word in ['hi', 'hello', 'hey']):
+        # Handle "hi/hello/hey" greetings — only for short utterances (pure greetings).
+        # Long utterances that start with "hey" (e.g. "hey maki, what is X?")
+        # fall through to canned responses / LLM instead.
+        _greeting_words = {'hi', 'hello', 'hey', 'maki'}
+        _non_greeting = [w.strip('?,!.') for w in low.split() if w.strip('?,!.') not in _greeting_words]
+        if any(word in low.split() for word in ['hi', 'hello', 'hey']) and len(_non_greeting) == 0:
             self.get_logger().info("Greeting detected, waiting for speaker recognition...")
             time.sleep(0.30)
             name, conf = self._fuse_identity()
