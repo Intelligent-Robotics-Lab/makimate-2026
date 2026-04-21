@@ -23,7 +23,7 @@ IDENTITY_WAIT_SECS = 0.30
 # Add more as you discover them in the logs.
 _MAKI_ALIASES = [
     "mock", "mockey", "mocky", "makey", "mackey", "mackie",
-    "marky", "markee", "markey", "maki mate", "mockey mate", "rocky", "Rocky", "Mahi", "Mocky",
+    "marky", "markee", "markey", "maki mate", "mockey mate", "rocky", "Rocky", "Mahi", "Mocky", "Mikey", "Himakey", "Himaki", "Imaki",
 ]
 
 # Word-level corrections for common Whisper mis-transcriptions.
@@ -32,6 +32,7 @@ _WORD_CORRECTIONS = [
     ("sector", "center"),
     ("louis", "louie"),
     ("louise", "louie"),
+    ("Zody", "Zohdy"),
 ]
 
 # ---------------------------------------------------------------------------
@@ -45,8 +46,7 @@ _CANNED_RESPONSES = [
     # Add demo Q&A pairs here. Examples:
     # (["thermodynamics"], "The thermodynamics lab is located on the third floor, room 312."),
     # (["advising", "advisor"], "Student advising offices are on the second floor near the main stairwell."),
-]
-
+    (["thermodynamics"], "The thermodynamics lab is at Room 356 in the Engineering Center.")
 
 class ASRCommandRouter(Node):
     """
