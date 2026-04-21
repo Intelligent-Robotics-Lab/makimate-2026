@@ -33,6 +33,7 @@ _WORD_CORRECTIONS = [
     ("louis", "louie"),
     ("louise", "louie"),
     ("Zody", "Zohdy"),
+    ("from now", "Hello")
 ]
 
 # ---------------------------------------------------------------------------
@@ -46,7 +47,8 @@ _CANNED_RESPONSES = [
     # Add demo Q&A pairs here. Examples:
     # (["thermodynamics"], "The thermodynamics lab is located on the third floor, room 312."),
     # (["advising", "advisor"], "Student advising offices are on the second floor near the main stairwell."),
-    (["thermodynamics"], "The thermodynamics lab is at Room 356 in the Engineering Center.")
+    # (["thermodynamics"], "The thermodynamics lab is at Room 356 in the Engineering Center.")
+]
 
 class ASRCommandRouter(Node):
     """

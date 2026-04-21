@@ -26,15 +26,35 @@ from fastapi.responses import HTMLResponse
 
 
 # ------------------------------------------------------------------ #
-# Server-side config — updated via dashboard, propagated to ROS nodes
+# Server-side config — updated via dashboard, propagated to ROS nodes.
+# Persisted to disk so values survive dashboard restarts.
 # ------------------------------------------------------------------ #
-SERVER_CONFIG: Dict = {
+_CONFIG_PATH = Path(os.path.expanduser("~/.makimate_dashboard_config.json"))
+
+_CONFIG_DEFAULTS: Dict = {
     "llm_server_url": "http://127.0.0.1:8000",
     "llm_model": "",
     "whisper_server_url": "",
     "whisper_model": "base",
     "identity_enabled": True,
 }
+
+def _load_config() -> Dict:
+    cfg = dict(_CONFIG_DEFAULTS)
+    if _CONFIG_PATH.exists():
+        try:
+            cfg.update(json.loads(_CONFIG_PATH.read_text()))
+        except Exception:
+            pass
+    return cfg
+
+def _save_config(cfg: Dict) -> None:
+    try:
+        _CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
+    except Exception:
+        pass
+
+SERVER_CONFIG: Dict = _load_config()
 
 # ------------------------------------------------------------------ #
 # Parameter registry — which params are visible/editable per node.
@@ -268,17 +288,18 @@ def set_volume(value: int) -> tuple:
             return True, 'PulseAudio', value
     except Exception as e:
         pass
-    # fallback: ALSA — try Master (USB DAC card 0) then PCM
-    for ctrl in ('Master', 'PCM'):
-        try:
-            r = subprocess.run(
-                ['amixer', '-c', '0', '-q', 'sset', ctrl, f'{value}%'],
-                capture_output=True, text=True, timeout=3,
-            )
-            if r.returncode == 0:
-                return True, f'ALSA {ctrl}', value
-        except Exception:
-            pass
+    # fallback: ALSA — try default card first, then card 0
+    for card_args in (['amixer'], ['amixer', '-c', '0']):
+        for ctrl in ('Master', 'PCM'):
+            try:
+                r = subprocess.run(
+                    card_args + ['-q', 'sset', ctrl, f'{value}%'],
+                    capture_output=True, text=True, timeout=3,
+                )
+                if r.returncode == 0:
+                    return True, f'ALSA {ctrl}', value
+            except Exception:
+                pass
     return False, 'No suitable volume control found', value
 
 
@@ -296,19 +317,20 @@ def get_volume() -> int:
                 return int(m.group(1))
     except Exception:
         pass
-    # fallback: ALSA Master or PCM on card 0 (USB DAC)
-    for ctrl in ('Master', 'PCM'):
-        try:
-            r = subprocess.run(
-                ['amixer', '-c', '0', 'sget', ctrl],
-                capture_output=True, text=True, timeout=3,
-            )
-            if r.returncode == 0:
-                m = re.search(r'\[(\d+)%\]', r.stdout)
-                if m:
-                    return int(m.group(1))
-        except Exception:
-            pass
+    # fallback: ALSA — try default card first, then card 0
+    for card_args in (['amixer'], ['amixer', '-c', '0']):
+        for ctrl in ('Master', 'PCM'):
+            try:
+                r = subprocess.run(
+                    card_args + ['sget', ctrl],
+                    capture_output=True, text=True, timeout=3,
+                )
+                if r.returncode == 0:
+                    m = re.search(r'\[(\d+)%\]', r.stdout)
+                    if m:
+                        return int(m.group(1))
+            except Exception:
+                pass
     return -1
 
 
@@ -414,7 +436,7 @@ def robot_start(node: "DashboardNode") -> tuple:
                 "source /opt/ros/jazzy/setup.bash && "
                 f"source {repo}/install/setup.bash && "
                 "if [ -f ~/maki_ws/install/setup.bash ]; then source ~/maki_ws/install/setup.bash; fi && "
-                f"ros2 launch {repo}/src/core/maki_operational_nodes/launch/presentation_mode_v3.launch.py"
+                f"ros2 launch maki_operational_nodes presentation_mode_v3.launch.py"
             )
             log_fh = open(ROBOT_LOG, "w")
             node._robot_proc = subprocess.Popen(
@@ -696,6 +718,7 @@ async def _handle(ws: WebSocket, node: DashboardNode, msg: dict):
                 str(msg["identity_enabled"]).lower()
             )
 
+        _save_config(SERVER_CONFIG)
         await node._broadcast(json.dumps({"type": "server_config", "config": SERVER_CONFIG}))
         node.get_logger().info(f"Server config updated: {SERVER_CONFIG}")
 
