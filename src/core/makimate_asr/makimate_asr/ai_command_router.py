@@ -33,6 +33,19 @@ _WORD_CORRECTIONS = [
     ("louis", "louie"),
 ]
 
+# ---------------------------------------------------------------------------
+# Canned responses for the demo presentation.
+# Each entry is (triggers, response) where triggers is a list of strings.
+# If ANY trigger string appears anywhere in the utterance (case-insensitive),
+# the canned response is spoken directly and the LLM is skipped.
+# More specific triggers (longer phrases) should come first.
+# ---------------------------------------------------------------------------
+_CANNED_RESPONSES = [
+    # Add demo Q&A pairs here. Examples:
+    # (["thermodynamics"], "The thermodynamics lab is located on the third floor, room 312."),
+    # (["advising", "advisor"], "Student advising offices are on the second floor near the main stairwell."),
+]
+
 
 class ASRCommandRouter(Node):
     """
@@ -304,6 +317,15 @@ class ASRCommandRouter(Node):
         if self._calibration_active:
             self.get_logger().info("[Router] Calibration active — not forwarding to LLM.")
             return
+
+        # Canned response intercept — check before forwarding to LLM
+        for triggers, canned in _CANNED_RESPONSES:
+            if any(t in low for t in triggers):
+                self.get_logger().info(
+                    f"[Router] Canned response triggered by {triggers!r}: {canned!r}"
+                )
+                self._speak_immediate(canned)
+                return
 
         # Normal conversation → forward to LLM with identity context.
         if not self._identity_enabled:

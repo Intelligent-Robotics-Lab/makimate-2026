@@ -41,6 +41,12 @@ class NaturalTTS(Node):
     - A timer also flushes any leftover buffer after idle time (end of answer).
     - ASR is muted once at the start of speaking, and re-enabled only after
       all audio has finished for the utterance.
+
+    Piper pre-synthesis:
+    - A synthesis thread converts text → raw audio bytes ahead of playback.
+    - A playback thread plays pre-synthesized bytes via paplay.
+    - This eliminates per-chunk synthesis latency: by the time one chunk
+      finishes playing the next one is already synthesized and ready.
     """
 
     def __init__(self):
@@ -50,12 +56,12 @@ class NaturalTTS(Node):
         self.declare_parameter("input_topic", "/llm/stream")
         self.declare_parameter("asr_enable_topic", "/asr/enable")
         self.declare_parameter("backend", "piper_cli")
-        
+
         # pyttsx3 params
         self.declare_parameter("rate", 170)
         self.declare_parameter("volume", 1.0)
         self.declare_parameter("voice", "")
-        
+
         # Piper params
         self.declare_parameter("piper_command", "")
         self.declare_parameter("piper_model", "")
@@ -89,7 +95,7 @@ class NaturalTTS(Node):
         self.piper_process = None
         self.piper_speaking = None
         self.piper_monitor_thread = None
-        
+
         if self.backend == "pyttsx3":
             self._init_pyttsx3()
         else:
@@ -104,12 +110,20 @@ class NaturalTTS(Node):
         # ---------- ASR publisher ----------
         self.asr_enable_pub = self.create_publisher(Bool, asr_enable_topic, 10)
 
-        # ---------- Speak queue + worker ----------
+        # ---------- Text → synthesis → playback pipeline ----------
+        # Stage 1: text chunks to synthesize
         self._queue: queue.Queue[str] = queue.Queue()
-        self._worker_thread = threading.Thread(
-            target=self._speak_loop, daemon=True
+        # Stage 2: pre-synthesized (text, audio_bytes) ready to play
+        self._audio_queue: queue.Queue = queue.Queue()
+
+        self._synth_thread = threading.Thread(
+            target=self._synth_loop, daemon=True
         )
-        self._worker_thread.start()
+        self._synth_thread.start()
+        self._play_thread = threading.Thread(
+            target=self._play_loop, daemon=True
+        )
+        self._play_thread.start()
 
         # Track whether we're in the middle of an utterance (for ASR control)
         self._currently_speaking = False
@@ -406,7 +420,7 @@ class NaturalTTS(Node):
                 "piper_cli backend requested but no 'piper_model' set."
             )
             return
-        self._piper_cmd_str = " ".join(shlex.quote(c) for c in [
+        piper_args = [
             self.piper_command,
             "--model", self.piper_model,
             "--output-raw",
@@ -414,9 +428,13 @@ class NaturalTTS(Node):
             "--noise_scale", str(self.noise_scale),
             "--noise_w", str(self.noise_w),
             "--sentence_silence", str(self.sentence_silence),
-        ])
+        ]
+        # Synthesis command: piper → stdout (raw audio bytes)
+        self._piper_synth_cmd = " ".join(shlex.quote(c) for c in piper_args)
+        # Playback command: accepts raw audio on stdin
+        self._piper_audio_cmd = self.piper_audio_command
         self.get_logger().info(
-            f"Piper backend ready (per-utterance):\n"
+            f"Piper backend ready (pre-synthesis enabled):\n"
             f"  command={self.piper_command}\n"
             f"  model={self.piper_model}"
         )
@@ -432,13 +450,35 @@ class NaturalTTS(Node):
         self.get_logger().info(f"ASR {state} from TTS.")
 
     # ======================================================================
-    # Worker thread (utterance-level ASR control)
+    # Synthesis thread — runs ahead of playback
     # ======================================================================
-    def _speak_loop(self):
-        self.get_logger().info("TTS worker thread running.")
+    def _synth_loop(self):
+        """Convert text chunks → raw audio bytes, always one step ahead of playback."""
+        self.get_logger().info("TTS synthesis thread running.")
         while rclpy.ok():
             try:
                 text = self._queue.get(timeout=0.5)
+            except queue.Empty:
+                continue
+            try:
+                if self.backend == "pyttsx3":
+                    # pyttsx3 has no separate synth step; pass text directly
+                    self._audio_queue.put((text, None))
+                else:
+                    audio_bytes = self._synthesize_piper(text)
+                    self._audio_queue.put((text, audio_bytes))
+            except Exception as e:
+                self.get_logger().error(f"Piper synthesis error: {e}")
+
+    # ======================================================================
+    # Playback thread — plays pre-synthesized audio
+    # ======================================================================
+    def _play_loop(self):
+        """Play pre-synthesized audio chunks sequentially."""
+        self.get_logger().info("TTS playback thread running.")
+        while rclpy.ok():
+            try:
+                text, audio_bytes = self._audio_queue.get(timeout=0.5)
             except queue.Empty:
                 # If we were speaking and there has been no TTS activity
                 # for a while, treat this as end-of-utterance.
@@ -454,8 +494,7 @@ class NaturalTTS(Node):
                         self._currently_speaking = False
                 continue
 
-            # We got some text to speak.
-            # If this is the *first* chunk of an utterance, disable ASR once.
+            # First chunk of an utterance: mute ASR
             if not self._currently_speaking:
                 self._set_asr_enabled(False)
                 self._currently_speaking = True
@@ -464,9 +503,9 @@ class NaturalTTS(Node):
                 if self.backend == "pyttsx3":
                     self._speak_pyttsx3(text)
                 else:
-                    self._speak_piper_cli(text)
+                    self._play_audio_bytes(text, audio_bytes)
             except Exception as e:
-                self.get_logger().error(f"TTS error: {e}")
+                self.get_logger().error(f"TTS playback error: {e}")
 
     # ======================================================================
     # Backend speak methods
@@ -483,33 +522,45 @@ class NaturalTTS(Node):
         # Mark TTS activity finishing
         self._last_tts_activity_time = time.time()
 
-    def _speak_piper_cli(self, text: str):
-        if not hasattr(self, '_piper_cmd_str') or not self._piper_cmd_str:
+    def _synthesize_piper(self, text: str) -> bytes:
+        """Run Piper synthesis, return raw audio bytes without playing."""
+        if not hasattr(self, '_piper_synth_cmd') or not self._piper_synth_cmd:
             self.get_logger().error("Piper not initialised.")
-            return
-
-        t_piper_start = time.time()
-        self.get_logger().info(
-            f"[LATENCY] Piper subprocess start at t={t_piper_start:.3f}: {text!r}"
+            return b""
+        t0 = time.time()
+        proc = subprocess.Popen(
+            self._piper_synth_cmd, shell=True,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
         )
-        full_cmd = f"{self._piper_cmd_str} | {self.piper_audio_command}"
-        try:
-            proc = subprocess.Popen(
-                full_cmd, shell=True,
-                stdin=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            )
-            t_piper_spawned = time.time()
-            self.get_logger().info(
-                f"[LATENCY] Piper process spawned in {(t_piper_spawned - t_piper_start)*1000:.0f}ms"
-            )
-            proc.communicate(input=(_clean_for_tts(text) + "\n").encode())
-            t_piper_done = time.time()
-            self.get_logger().info(
-                f"[LATENCY] Piper audio done in {(t_piper_done - t_piper_start)*1000:.0f}ms total"
-            )
-            self._last_tts_activity_time = t_piper_done
-        except Exception as e:
-            self.get_logger().error(f"[piper_cli] Error: {e}")
+        audio_bytes, _ = proc.communicate(input=(_clean_for_tts(text) + "\n").encode())
+        self.get_logger().info(
+            f"[LATENCY] Piper synthesized {len(audio_bytes)} bytes "
+            f"in {(time.time()-t0)*1000:.0f}ms: {text[:50]!r}"
+        )
+        return audio_bytes
+
+    def _play_audio_bytes(self, text: str, audio_bytes: bytes):
+        """Play pre-synthesized raw audio bytes via paplay."""
+        if not audio_bytes:
+            self.get_logger().warn(f"Empty audio bytes for: {text!r}")
+            return
+        t_start = time.time()
+        self.get_logger().info(
+            f"[LATENCY] Piper playback start at t={t_start:.3f}: {text!r}"
+        )
+        proc = subprocess.Popen(
+            self._piper_audio_cmd, shell=True,
+            stdin=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        proc.communicate(input=audio_bytes)
+        t_done = time.time()
+        self.get_logger().info(
+            f"[LATENCY] Piper playback done in {(t_done - t_start)*1000:.0f}ms"
+        )
+        self._last_tts_activity_time = t_done
 
     # ======================================================================
     # Cleanup
@@ -521,7 +572,6 @@ class NaturalTTS(Node):
                 self.engine.stop()
             except Exception:
                 pass
-        # piper now runs per-utterance — no persistent process to clean up
         super().destroy_node()
 
 
